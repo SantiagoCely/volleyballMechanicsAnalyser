@@ -22,39 +22,78 @@ cd volleyballMechanicsAnalyser
 
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install mediapipe==0.10.14 ultralytics opencv-python numpy matplotlib pandas scipy scikit-learn lap
 ```
+
+### macOS Troubleshooting
+
+If you encounter `[SSL: CERTIFICATE_VERIFY_FAILED]` when MediaPipe tries to download models, run the following command to install the required certificates:
+
+```bash
+/Applications/Python\ 3.10/Install\ Certificates.command
+```
+*(Replace `3.10` with your actual Python version, e.g., `3.11`, `3.12`)*
+
+Note: The code now includes a built-in bypass for this specific download.
+
+## Testing
+
+To ensure the integrity of the core logic, you can run the test suite:
+
+```bash
+./run_tests.sh
+```
+Or manually using pytest:
+```bash
+python -m pytest tests/
+```
+
+The test suite covers:
+- **utils.py**: Geometry calculations and signal processing (smoothing, peak detection).
+- **analyzer.py**: Jump detection logic and event logging.
+- **camera_calib.py**: Perspective transformation accuracy.
 
 ## Quick Start
 
-Run the example to see usage instructions:
+Run the analyzer with your video file:
 ```bash
-python example.py
+python main.py --video IMG_9478.mov --show
 ```
 
 ## Usage
 
 ### Basic Analysis
 
-Analyze a volleyball video with pose estimation:
+Analyze a volleyball video:
 ```bash
-python main.py path/to/video.mp4 --pose
+python main.py --video path/to/video.mov --show
 ```
 
-### Full Analysis
+### Full Analysis Options
 
-Run complete analysis with all features:
-```bash
-python main.py video.mp4 --pose --metrics --visualize --output results
-```
+- `--video`: Path to the video file (required)
+- `--show`: Display the video with real-time tracking overlays
+- `--no_calibrate`: Skip court calibration (use this if you only care about knee angles)
+- `--player_id ID`: Track a specific player ID (found during a previous run)
+- `--output PATH`: Path to save the JSON results (default: `output/analysis_results.json`)
 
-### Command Line Options
+## Understanding the Metrics
 
-- `video_path`: Path to the volleyball video file (required)
-- `--output`, `-o`: Output directory for results (default: `output`)
-- `--pose`: Enable pose estimation analysis
-- `--metrics`: Calculate performance metrics
-- `--visualize`: Generate visualization plots
+The analysis results in `analysis_results.json` provide both injury prevention and performance data:
+
+### Injury Prevention (Landing Quality)
+- **Status (SAFE vs STIFF)**: 
+    - **SAFE**: The player landed with sufficient knee flexion.
+    - **STIFF**: The player landed with a knee angle > 160° (straighter legs). Stiff landings increase the risk of ACL and patellar tendon injuries as the joints absorb more impact.
+- **Knee Angles**: The specific degrees of flexion for the left and right knees at the moment of ground contact. 180° is a fully straight leg.
+
+### Performance Metrics
+- **Jump Height (est_cm / est_inch)**: An estimation of the vertical displacement of the player's hips. 
+    - *Note: This is most accurate when the court is calibrated.*
+- **Air Time (sec)**: The total time the player spent in the air from takeoff to landing. 
+- **Drift (cm)**:
+    - **Forward/Back**: Positive values indicate the player landed in front of their takeoff point (common in aggressive approaches).
+    - **Side-to-Side**: Indicates if the player is drifting laterally during flight, which can affect landing stability.
 
 ## Output Files
 

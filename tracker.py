@@ -1,18 +1,34 @@
 import cv2
 import numpy as np
 import mediapipe as mp
+import ssl
 from ultralytics import YOLO
+
+# Bypass SSL certificate verification for model downloads
+ssl._create_default_https_context = ssl._create_unverified_context
+
+import torch
 
 class PlayerTracker:
     def __init__(self, model_path='yolov10n.pt', target_player_id=None):
+        # Detect device: use 'mps' for Mac GPU, else 'cpu'
+        if torch.backends.mps.is_available():
+            self.device = 'mps'
+            print("Using Apple Silicon (MPS) Acceleration")
+        elif torch.cuda.is_available():
+            self.device = 'cuda'
+        else:
+            self.device = 'cpu'
+            
         self.model = YOLO(model_path)
+        self.model.to(self.device)
         self.target_player_id = target_player_id
         
         # Initialize MediaPipe Pose
         self.mp_pose = mp.solutions.pose
         self.pose = self.mp_pose.Pose(
             static_image_mode=False,
-            model_complexity=2,
+            model_complexity=1,
             enable_segmentation=False,
             min_detection_confidence=0.5
         )
@@ -32,11 +48,11 @@ class PlayerTracker:
 
     def process_frame(self, frame):
         """Processes a frame to track player and calculate knee flexion."""
-        # Run YOLOv10 tracking
-        results = self.model.track(frame, persist=True, tracker="bytetrack.yaml")
+        # Run YOLOv10 tracking on the selected device
+        results = self.model.track(frame, persist=True, tracker="bytetrack.yaml", device=self.device, verbose=False)
         
-        if not results or not results[0].boxes.id:
-            return None, None
+        if not results or results[0].boxes.id is None:
+            return None, None, None, None
 
         boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.int().cpu().numpy()
