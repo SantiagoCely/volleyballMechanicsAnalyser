@@ -52,7 +52,7 @@ class PlayerTracker:
         results = self.model.track(frame, persist=True, tracker="bytetrack.yaml", device=self.device, verbose=False)
         
         if not results or results[0].boxes.id is None:
-            return None, None, None, None
+            return None, None, None, None, None
 
         boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.int().cpu().numpy()
@@ -101,10 +101,14 @@ class PlayerTracker:
                 r_ankle = landmarks[self.mp_pose.PoseLandmark.RIGHT_ANKLE]
                 ground_x = x1 + ((l_ankle.x + r_ankle.x) / 2 * (x2 - x1))
                 ground_y = y1 + ((l_ankle.y + r_ankle.y) / 2 * roi_height)
-                
-                return track_id, (l_angle, r_angle), avg_hip_y_frame, (ground_x, ground_y)
 
-        return None, None, None, None
+                roi_width = x2 - x1
+                l_ankle_pixel = (x1 + l_ankle.x * roi_width, y1 + l_ankle.y * roi_height)
+                r_ankle_pixel = (x1 + r_ankle.x * roi_width, y1 + r_ankle.y * roi_height)
+
+                return track_id, (l_angle, r_angle), avg_hip_y_frame, (ground_x, ground_y), (l_ankle_pixel, r_ankle_pixel)
+
+        return None, None, None, None, None
 
 if __name__ == "__main__":
     tracker = PlayerTracker()

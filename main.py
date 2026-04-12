@@ -116,6 +116,9 @@ def main():
     calibrator = None
     if args.debug:
         print("Step 1: DEBUG MODE - Using hardcoded court corners.")
+        print("  WARNING: Hardcoded corners are placeholders and will not match your video.")
+        print("  Coordinate-based metrics (drift, positions, approach velocity, takeoff angle)")
+        print("  will be unreliable. Run without --debug for accurate court measurements.")
         corners = [(400, 200), (1500, 200), (1800, 900), (100, 900)]
         calibrator = CameraCalibrator(corners)
     elif not args.no_calibrate:
@@ -148,11 +151,21 @@ def main():
         ret, frame = cap.read()
         if not ret: break
             
-        player_id, knee_angles, hip_y, ground_pos = tracker.process_frame(frame)
+        player_id, knee_angles, hip_y, ground_pos, foot_pixels = tracker.process_frame(frame)
         if player_id is not None:
             # Map position if calibrator is available, else use pixel pos
             pos = calibrator.transform_point(ground_pos) if calibrator else ground_pos
-            analyzer.analyze_frame(player_id, knee_angles, hip_y, pos, frame_time)
+            foot_court_pos = None
+            if foot_pixels is not None:
+                l_foot, r_foot = foot_pixels
+                if calibrator:
+                    foot_court_pos = (
+                        calibrator.transform_point(l_foot),
+                        calibrator.transform_point(r_foot),
+                    )
+                else:
+                    foot_court_pos = (l_foot, r_foot)
+            analyzer.analyze_frame(player_id, knee_angles, hip_y, pos, frame_time, foot_court_pos)
             
             if args.show:
                 l_angle, r_angle = knee_angles
