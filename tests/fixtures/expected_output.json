@@ -1,0 +1,33 @@
+{
+    "_comment": "Pre-computed expected metrics for single_jump_sequence.json. Update this file whenever intentional metric changes are made.",
+    "event_count": 2,
+    "jump_start": {
+        "event": "JUMP_START",
+        "player_id": 1,
+        "jump_num": 1,
+        "takeoff_pos": [300, 0],
+        "approach_velocity_cms": 500.0,
+        "takeoff_stance_width_cm": 20.0
+    },
+    "landing": {
+        "event": "LANDING",
+        "player_id": 1,
+        "status": "SAFE",
+        "metrics": {
+            "air_time_sec": 0.4,
+            "jump_height_est_cm": 35.0,
+            "jump_height_est_inch": 13.8,
+            "knee_angles": {"left": 145.0, "right": 148.0},
+            "drift_cm": {
+                "forward_back": 5.0,
+                "side_to_side": 5.0,
+                "magnitude": 7.1
+            },
+            "approach_velocity_cms": 500.0,
+            "takeoff_stance_width_cm": 20.0,
+            "takeoff_angle_deg": 27.7,
+            "com_flight_drift_cm": 0.0
+        },
+        "landing_pos": [305, 5]
+    }
+}

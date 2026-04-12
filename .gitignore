@@ -134,3 +134,14 @@ dmypy.json
 *.mov
 data/
 videos/
+
+# macOS metadata
+.DS_Store
+
+# ML model weights (large binaries — download separately)
+*.pt
+*.pth
+*.onnx
+
+# Generated output
+output/

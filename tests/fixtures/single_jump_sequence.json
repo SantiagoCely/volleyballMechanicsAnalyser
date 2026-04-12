@@ -1,0 +1,13 @@
+[
+    {"frame": 0,  "frame_time": 0.0, "hip_y": 400, "court_pos": [0,   0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "baseline"},
+    {"frame": 1,  "frame_time": 0.1, "hip_y": 400, "court_pos": [50,  0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "approach"},
+    {"frame": 2,  "frame_time": 0.2, "hip_y": 400, "court_pos": [100, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "approach"},
+    {"frame": 3,  "frame_time": 0.3, "hip_y": 400, "court_pos": [150, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "approach"},
+    {"frame": 4,  "frame_time": 0.4, "hip_y": 400, "court_pos": [200, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "approach"},
+    {"frame": 5,  "frame_time": 0.5, "hip_y": 400, "court_pos": [250, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "approach"},
+    {"frame": 6,  "frame_time": 0.6, "hip_y": 370, "court_pos": [300, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": [[290.0, 0.0], [310.0, 0.0]], "notes": "JUMP_START (hip < 93% of 400=372)"},
+    {"frame": 7,  "frame_time": 0.7, "hip_y": 310, "court_pos": [300, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "ascending"},
+    {"frame": 8,  "frame_time": 0.8, "hip_y": 260, "court_pos": [300, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "peak (min hip_y)"},
+    {"frame": 9,  "frame_time": 0.9, "hip_y": 310, "court_pos": [300, 0], "knee_angles": [170.0, 172.0], "foot_court_pos": null,                       "notes": "descending"},
+    {"frame": 10, "frame_time": 1.0, "hip_y": 390, "court_pos": [305, 5], "knee_angles": [145.0, 148.0], "foot_court_pos": null,                       "notes": "LANDING (hip >= 97% of 400=388), SAFE knees"}
+]
