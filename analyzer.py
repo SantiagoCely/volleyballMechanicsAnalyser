@@ -92,13 +92,33 @@ class JumpAnalyzer:
         (lx, ly), (rx, ry) = foot_court_pos
         return math.sqrt((rx - lx) ** 2 + (ry - ly) ** 2)
 
+    def _compute_com_flight_drift(self, start_pos, end_pos, com_positions):
+        """
+        Maximum perpendicular deviation of CoM from the straight line
+        between takeoff and landing positions.
+        """
+        sx, sy = start_pos
+        ex, ey = end_pos
+        line_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
+        if line_len == 0:
+            # No horizontal movement — just return max distance from start
+            return max(math.sqrt((p[0] - sx) ** 2 + (p[1] - sy) ** 2) for p in com_positions)
+        max_dev = 0.0
+        for px, py in com_positions:
+            # Perpendicular distance from point to line segment
+            cross = abs((ey - sy) * px - (ex - sx) * py + ex * sy - ey * sx)
+            dev = cross / line_len
+            if dev > max_dev:
+                max_dev = dev
+        return max_dev
+
     def _compute_takeoff_angle(self, jump_height_cm, approach_velocity_cms):
         """
         Estimate takeoff angle (degrees from horizontal) using:
           - initial vertical velocity: v0 = sqrt(2 * g * h)
           - horizontal velocity: approach_velocity_cms
         """
-        if approach_velocity_cms is None or approach_velocity_cms <= 0:
+        if approach_velocity_cms is None or approach_velocity_cms <= 0 or jump_height_cm <= 0:
             return None
         v0_vertical = math.sqrt(2 * _GRAVITY_CM_S2 * jump_height_cm)
         angle = math.degrees(math.atan2(v0_vertical, approach_velocity_cms))
@@ -117,8 +137,8 @@ class JumpAnalyzer:
             self.baseline_hip_height = current_hip_y
             return
 
-        # Buffer position history for approach velocity
-        if court_pos is not None:
+        # Buffer position history for approach velocity (only while grounded)
+        if court_pos is not None and not self.is_jumping:
             self.pos_history.append((court_pos, frame_time))
             # Keep only the last 2 seconds of history to bound memory
             cutoff = frame_time - 2.0
@@ -206,26 +226,6 @@ class JumpAnalyzer:
                     details["metrics"]["com_flight_drift_cm"] = round(com_drift_mag, 1)
 
                 self.log_event("LANDING", details)
-
-    def _compute_com_flight_drift(self, start_pos, end_pos, com_positions):
-        """
-        Maximum perpendicular deviation of CoM from the straight line
-        between takeoff and landing positions.
-        """
-        sx, sy = start_pos
-        ex, ey = end_pos
-        line_len = math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2)
-        if line_len == 0:
-            # No horizontal movement — just return max distance from start
-            return max(math.sqrt((p[0] - sx) ** 2 + (p[1] - sy) ** 2) for p in com_positions)
-        max_dev = 0.0
-        for px, py in com_positions:
-            # Perpendicular distance from point to line segment
-            cross = abs((ey - sy) * px - (ex - sx) * py + ex * sy - ey * sx)
-            dev = cross / line_len
-            if dev > max_dev:
-                max_dev = dev
-        return max_dev
 
     def save_logs(self, filename="jump_analysis.json"):
         with open(filename, 'w') as f:

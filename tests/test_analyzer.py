@@ -58,7 +58,7 @@ class TestApproachVelocity(unittest.TestCase):
         self.assertEqual(jump_start['event'], 'JUMP_START')
         self.assertIn('approach_velocity_cms', jump_start['details'])
         # 100 cm in 1.0 s = 100 cm/s (within approach window)
-        self.assertAlmostEqual(jump_start['details']['approach_velocity_cms'], 100.0, delta=5.0)
+        self.assertAlmostEqual(jump_start['details']['approach_velocity_cms'], 100.0, delta=1.0)
 
     def test_approach_velocity_in_landing_metrics(self):
         self.analyzer.analyze_frame(1, (170, 175), 400, court_pos=(0, 0), frame_time=0.0)
@@ -132,6 +132,12 @@ class TestTakeoffAngle(unittest.TestCase):
         landing = self.analyzer.history[-1]
         self.assertEqual(landing['event'], 'LANDING')
         self.assertNotIn('takeoff_angle_deg', landing['details']['metrics'])
+
+    def test_takeoff_angle_absent_when_jump_height_zero_or_negative(self):
+        """Angle must be None (not crash) when jump_height_cm <= 0."""
+        analyzer = JumpAnalyzer()
+        self.assertIsNone(analyzer._compute_takeoff_angle(0.0, 200.0))
+        self.assertIsNone(analyzer._compute_takeoff_angle(-5.0, 200.0))
 
     def test_takeoff_angle_physics(self):
         """Verify angle is computed correctly from known velocity + height."""

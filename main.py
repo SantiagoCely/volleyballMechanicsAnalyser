@@ -182,7 +182,9 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
     print(f"Analysis complete. Total Jumps: {analyzer.jump_count}")
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    output_dir = os.path.dirname(args.output)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     analyzer.save_logs(args.output)
 
 if __name__ == "__main__":

@@ -82,7 +82,7 @@ Results are saved as a JSON array of events. Each jump produces two events: `JUM
 | `player_id` | int | ByteTrack ID of the tracked player |
 | `jump_num` | int | Sequential jump counter for this player in the video |
 | `takeoff_pos` | [x, y] | Court position (cm) at the moment of takeoff. Requires calibration; in pixels otherwise |
-| `approach_velocity_cms` | float | Average horizontal speed (cm/s) over the 0.5 s window before takeoff. Elite attackers typically reach 400–600 cm/s |
+| `approach_velocity_cms` | float | 2D court-plane speed (cm/s) estimated via OLS regression over the 0.5 s window before takeoff. Elite attackers typically reach 400–600 cm/s |
 | `takeoff_stance_width_cm` | float | Distance between left and right ankles at the moment of takeoff (cm). Reflects jump preparation stance width |
 
 ### LANDING event
