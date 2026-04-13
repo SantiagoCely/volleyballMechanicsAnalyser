@@ -289,28 +289,29 @@ class TestTrackerSmoke(unittest.TestCase):
         from tracker import PlayerTracker
         cls.tracker = PlayerTracker()
 
-    def test_process_frame_returns_five_tuple(self):
+    def test_process_frame_returns_six_tuple(self):
         blank = np.zeros((480, 640, 3), dtype=np.uint8)
         result = self.tracker.process_frame(blank)
         self.assertIsInstance(result, tuple)
-        self.assertEqual(len(result), 5,
-                         "process_frame must return a 5-tuple: "
-                         "(track_id, knee_angles, hip_y, ground_pos, foot_pixels)")
+        self.assertEqual(len(result), 6,
+                         "process_frame must return a 6-tuple: "
+                         "(track_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body)")
 
     def test_process_frame_none_on_blank_frame(self):
         """A blank frame has no detectable player — all values should be None."""
         blank = np.zeros((480, 640, 3), dtype=np.uint8)
-        track_id, knee_angles, hip_y, ground_pos, foot_pixels = self.tracker.process_frame(blank)
+        track_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = self.tracker.process_frame(blank)
         self.assertIsNone(track_id)
         self.assertIsNone(knee_angles)
         self.assertIsNone(hip_y)
         self.assertIsNone(ground_pos)
         self.assertIsNone(foot_pixels)
+        self.assertIsNone(upper_body)
 
     def test_process_frame_type_contract_when_detected(self):
         """If a player IS detected, verify types are correct (skipped on blank frame)."""
         blank = np.zeros((480, 640, 3), dtype=np.uint8)
-        track_id, knee_angles, hip_y, ground_pos, foot_pixels = self.tracker.process_frame(blank)
+        track_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = self.tracker.process_frame(blank)
         if track_id is None:
             self.skipTest("No player detected in blank frame — type contract skipped")
         self.assertIsInstance(knee_angles, tuple)
@@ -320,6 +321,11 @@ class TestTrackerSmoke(unittest.TestCase):
         self.assertEqual(len(ground_pos), 2)
         self.assertIsInstance(foot_pixels, tuple)
         self.assertEqual(len(foot_pixels), 2)
+        # upper_body is None on blank frame, but verify structure if present
+        if upper_body is not None:
+            self.assertIsInstance(upper_body, dict)
+            self.assertIn("shoulders_px", upper_body)
+            self.assertIn("wrists_px", upper_body)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -349,6 +355,7 @@ def _build_mock_side_effect(frames):
             float(row["hip_y"]),          # hip_y (absolute pixel)
             tuple(row["court_pos"]),      # ground_pos (used as court_pos when no calibrator)
             foot,                         # foot_pixels (used as foot_court_pos when no calibrator)
+            None,                         # upper_body (not used in pipeline integration test)
         ))
     return side_effects
 
@@ -378,9 +385,9 @@ class TestPipelineIntegration(unittest.TestCase):
                 if not ret:
                     break
                 result = tracker.process_frame(frame)
-                if result is None or len(result) != 5:
+                if result is None or len(result) != 6:
                     continue
-                player_id, knee_angles, hip_y, ground_pos, foot_pixels = result
+                player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = result
                 if player_id is None:
                     continue
                 foot_court_pos = foot_pixels  # no calibrator in this test

@@ -151,7 +151,7 @@ def main():
         ret, frame = cap.read()
         if not ret: break
             
-        player_id, knee_angles, hip_y, ground_pos, foot_pixels = tracker.process_frame(frame)
+        player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = tracker.process_frame(frame)
         if player_id is not None:
             # Map position if calibrator is available, else use pixel pos
             pos = calibrator.transform_point(ground_pos) if calibrator else ground_pos

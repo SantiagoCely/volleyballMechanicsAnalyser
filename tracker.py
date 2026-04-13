@@ -114,12 +114,12 @@ class PlayerTracker:
 
                 upper_body = {
                     "shoulders_px": (
-                        (int(x1 + l_shoulder.x * roi_width), int(y1 + l_shoulder.y * roi_height)),
-                        (int(x1 + r_shoulder.x * roi_width), int(y1 + r_shoulder.y * roi_height)),
+                        (x1 + l_shoulder.x * roi_width, y1 + l_shoulder.y * roi_height),
+                        (x1 + r_shoulder.x * roi_width, y1 + r_shoulder.y * roi_height),
                     ),
                     "wrists_px": (
-                        (int(x1 + l_wrist.x * roi_width), int(y1 + l_wrist.y * roi_height)),
-                        (int(x1 + r_wrist.x * roi_width), int(y1 + r_wrist.y * roi_height)),
+                        (x1 + l_wrist.x * roi_width, y1 + l_wrist.y * roi_height),
+                        (x1 + r_wrist.x * roi_width, y1 + r_wrist.y * roi_height),
                     ),
                 }
 
