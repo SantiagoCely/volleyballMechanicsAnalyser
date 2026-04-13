@@ -245,8 +245,12 @@ class TestE2EOutputJSON(unittest.TestCase):
             analyzer.save_logs(tmp_path)
             with open(tmp_path) as f:
                 reloaded = json.load(f)
-            self.assertEqual(len(reloaded), len(analyzer.history))
-            for saved, original in zip(reloaded, analyzer.history):
+            # Output is SESSION_SUMMARY + history entries
+            self.assertEqual(len(reloaded), len(analyzer.history) + 1)
+            # First entry must be the session summary
+            self.assertEqual(reloaded[0]["event"], "SESSION_SUMMARY")
+            # Remaining entries must match history exactly
+            for saved, original in zip(reloaded[1:], analyzer.history):
                 self.assertEqual(saved["event"], original["event"])
                 self.assertEqual(saved["details"], original["details"])
         finally:
