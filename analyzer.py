@@ -1,7 +1,6 @@
 import json
 import math
 import statistics
-from datetime import datetime
 
 import numpy as np
 
@@ -9,6 +8,8 @@ import numpy as np
 _GRAVITY_CM_S2 = 981.0
 
 class JumpAnalyzer:
+    _CROUCH_THRESHOLD_DEG = 150.0
+
     def __init__(self, stiff_landing_threshold=160, approach_window_sec=0.5):
         self.stiff_landing_threshold = stiff_landing_threshold
         self.approach_window_sec = approach_window_sec
@@ -47,8 +48,9 @@ class JumpAnalyzer:
         self.post_landing_knee    = []   # list of (frame_time, l_angle, r_angle)
         self.post_landing_window  = 0.3  # seconds
 
-        # ISO timestamp captured at jump start
-        self.jump_start_timestamp = None
+        # Takeoff crouch metrics (set at jump start, read at landing)
+        self._takeoff_crouch_depth = None
+        self._takeoff_crouch_duration = None
 
         # Session-level accumulators (populated from each JUMP event)
         self.all_jump_heights = []
@@ -65,17 +67,6 @@ class JumpAnalyzer:
         if isinstance(obj, (list, tuple)):
             return [JumpAnalyzer._make_serializable(v) for v in obj]
         return obj
-
-    def log_event(self, event_type, details):
-        timestamp = datetime.now().isoformat()
-        serializable_details = self._make_serializable(details)
-        log_entry = {
-            "timestamp": timestamp,
-            "event": event_type,
-            "details": serializable_details
-        }
-        self.history.append(log_entry)
-        print(f"[{timestamp}] {event_type}: {serializable_details}")
 
     def _compute_approach_velocity(self, current_time):
         """Speed (cm/s) estimated via linear regression over the approach window.
@@ -156,13 +147,12 @@ class JumpAnalyzer:
         - takeoff_crouch_duration_sec: time spent below CROUCH_THRESHOLD degrees
         Returns (crouch_depth, crouch_duration) or (None, None) if no data.
         """
-        CROUCH_THRESHOLD = 150.0
         window = [(t, l, r) for t, l, r in self.approach_knee_angles if t <= jump_start_time]
         if not window:
             return None, None
         avg_angles = [(l + r) / 2 for _, l, r in window]
         crouch_depth = min(avg_angles)
-        crouch_frames = [(t, l, r) for t, l, r in window if (l + r) / 2 < CROUCH_THRESHOLD]
+        crouch_frames = [(t, l, r) for t, l, r in window if (l + r) / 2 < JumpAnalyzer._CROUCH_THRESHOLD_DEG]
         if len(crouch_frames) >= 2:
             crouch_duration = crouch_frames[-1][0] - crouch_frames[0][0]
         elif len(crouch_frames) == 1:
@@ -220,7 +210,7 @@ class JumpAnalyzer:
     def _finalize_landing_absorption(self):
         """
         Called after the post-landing window expires. Computes absorption metrics
-        from post_landing_knee buffer and amends the most recent LANDING event in history.
+        from post_landing_knee buffer and amends the most recent JUMP entry in history.
         """
         if not self.post_landing_knee:
             return
@@ -256,8 +246,8 @@ class JumpAnalyzer:
             self.baseline_hip_height = current_hip_y
             return
 
-        # Collect post-landing absorption frames (runs every frame after landing)
-        if self.post_landing_active:
+        # Collect post-landing absorption frames (only while grounded — not during flight of next jump)
+        if self.post_landing_active and not self.is_jumping:
             self.post_landing_knee.append((frame_time, knee_angles[0], knee_angles[1]))
             if frame_time - self.post_landing_start >= self.post_landing_window:
                 self._finalize_landing_absorption()
@@ -280,6 +270,11 @@ class JumpAnalyzer:
 
         # 1. JUMP START DETECTION
         if not self.is_jumping and current_hip_y < self.baseline_hip_height * 0.93:
+            # If jump 1's absorption window hasn't expired, finalize it now before starting jump 2
+            if self.post_landing_active:
+                self._finalize_landing_absorption()
+                self.post_landing_active = False
+
             self.is_jumping = True
             self.jump_count += 1
             self.jump_start_time = frame_time
@@ -293,8 +288,6 @@ class JumpAnalyzer:
 
             # Capture crouch metrics now so they are available at landing
             self._takeoff_crouch_depth, self._takeoff_crouch_duration = self._compute_takeoff_crouch(frame_time)
-
-            self.jump_start_timestamp = datetime.now().isoformat()
 
         # 2. DURING JUMP (TRACK PEAK & CoM PATH)
         elif self.is_jumping:
@@ -319,11 +312,9 @@ class JumpAnalyzer:
 
                 is_stiff = l_angle > self.stiff_landing_threshold or r_angle > self.stiff_landing_threshold
 
-                end_timestamp = datetime.now().isoformat()
-
                 # Build takeoff section
-                crouch_depth = getattr(self, '_takeoff_crouch_depth', None)
-                crouch_duration = getattr(self, '_takeoff_crouch_duration', None)
+                crouch_depth = self._takeoff_crouch_depth
+                crouch_duration = self._takeoff_crouch_duration
 
                 takeoff_section = {
                     "pos": list(self.jump_start_pos) if self.jump_start_pos is not None else None,
@@ -380,8 +371,8 @@ class JumpAnalyzer:
                     "event": "JUMP",
                     "jump_num": self.jump_count,
                     "player_id": self._make_serializable(player_id),
-                    "start_timestamp": self.jump_start_timestamp,
-                    "end_timestamp": end_timestamp,
+                    "start_video_time_sec": round(self.jump_start_time, 3),
+                    "end_video_time_sec": round(frame_time, 3),
                     "status": "STIFF" if is_stiff else "SAFE",
                     "takeoff": self._make_serializable(takeoff_section),
                     "metrics": self._make_serializable(metrics_section),
@@ -390,7 +381,7 @@ class JumpAnalyzer:
                     jump_entry["landing_pos"] = list(court_pos)
 
                 self.history.append(jump_entry)
-                print(f"[{end_timestamp}] JUMP #{self.jump_count}: {jump_entry['status']}, air_time={round(air_time, 3)}s, height={round(jump_height_cm, 1)}cm")
+                print(f"[t={round(frame_time, 3)}s] JUMP #{self.jump_count}: {jump_entry['status']}, air_time={round(air_time, 3)}s, height={round(jump_height_cm, 1)}cm")
 
                 # Session accumulators
                 self.all_jump_heights.append(jump_height_cm)
@@ -399,10 +390,14 @@ class JumpAnalyzer:
                 # Reset upper body at peak for next jump
                 self.upper_body_at_peak = None
 
-                # Start post-landing absorption window
+                # Clear approach buffers so post-landing deep-flex frames don't corrupt next jump's crouch metrics
+                self.approach_knee_angles = []
+                self.approach_upper_body = []
+
+                # Start post-landing absorption window, seeded with the landing frame itself
                 self.post_landing_active = True
                 self.post_landing_start  = frame_time
-                self.post_landing_knee   = []
+                self.post_landing_knee   = [(frame_time, l_angle, r_angle)]  # seed with landing frame
 
     def save_logs(self, filename="jump_analysis.json"):
         # Compute session summary
