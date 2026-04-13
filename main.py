@@ -102,10 +102,15 @@ def main():
     parser.add_argument("--calibrate", action="store_true",
         help="Enable court calibration for position-based metrics (drift, approach velocity, etc.)")
     parser.add_argument("--player_id", type=int, default=None, help="Specific Player ID to track")
-    parser.add_argument("--output", type=str, default="output/analysis_results.json", help="Path to save results")
+    parser.add_argument("--output", type=str, default=None,
+        help="Save results JSON to a custom path. Default: output/<video_stem>_analysis.json")
     parser.add_argument("--show", action="store_true", help="Display the video with overlays")
 
     args = parser.parse_args()
+
+    if args.output is None:
+        video_stem = os.path.splitext(os.path.basename(args.video))[0]
+        args.output = os.path.join("output", f"{video_stem}_analysis.json")
 
     # 1. Tracker Initialization
     tracker = PlayerTracker(target_player_id=args.player_id)
@@ -156,7 +161,7 @@ def main():
                     )
                 else:
                     foot_court_pos = (l_foot, r_foot)
-            analyzer.analyze_frame(player_id, knee_angles, hip_y, pos, frame_time, foot_court_pos)
+            analyzer.analyze_frame(player_id, knee_angles, hip_y, pos, frame_time, foot_court_pos, upper_body)
             
             if args.show:
                 l_angle, r_angle = knee_angles
@@ -176,7 +181,8 @@ def main():
     output_dir = os.path.dirname(args.output)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-    analyzer.save_logs(args.output)
+    video_name = os.path.basename(args.video)
+    analyzer.save_logs(args.output, video_name=video_name)
 
 if __name__ == "__main__":
     main()

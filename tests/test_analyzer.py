@@ -315,6 +315,70 @@ class TestLandingAbsorption(unittest.TestCase):
         self.assertIsNone(jump['metrics']['landing_absorption_duration_sec'])
 
 
+class TestUpperBodyMetrics(unittest.TestCase):
+    def setUp(self):
+        self.analyzer = JumpAnalyzer()
+
+    def _make_upper_body(self, l_wrist_y, r_wrist_y, shoulder_y=200, hip_y=300):
+        """Create a synthetic upper_body dict with controllable wrist heights."""
+        return {
+            "shoulders_px": ((320, shoulder_y), (360, shoulder_y)),
+            "wrists_px": ((310, l_wrist_y), (370, r_wrist_y)),
+        }
+
+    def test_arm_swing_symmetry_computed_when_upper_body_present(self):
+        """arm_swing_symmetry_px should be non-null when upper_body is provided."""
+        # symmetric arms
+        ub = self._make_upper_body(l_wrist_y=150, r_wrist_y=150)
+        self.analyzer.analyze_frame(1, (170, 175), 400, frame_time=0.0, upper_body=ub)
+        # jump
+        self.analyzer.analyze_frame(1, (170, 175), 300, frame_time=0.1, upper_body=ub)
+        # landing
+        self.analyzer.analyze_frame(1, (145, 148), 400, frame_time=0.6, upper_body=ub)
+
+        jump = self.analyzer.history[-1]
+        self.assertIsNotNone(jump["metrics"]["arm_swing_symmetry_px"])
+        self.assertAlmostEqual(jump["metrics"]["arm_swing_symmetry_px"], 0.0, delta=0.1)
+
+    def test_arm_swing_asymmetry_detected(self):
+        """Unequal wrist heights should produce non-zero arm_swing_symmetry_px."""
+        ub_asymmetric = self._make_upper_body(l_wrist_y=100, r_wrist_y=180)
+        self.analyzer.analyze_frame(1, (170, 175), 400, frame_time=0.0, upper_body=ub_asymmetric)
+        self.analyzer.analyze_frame(1, (170, 175), 300, frame_time=0.1, upper_body=ub_asymmetric)
+        self.analyzer.analyze_frame(1, (145, 148), 400, frame_time=0.6, upper_body=ub_asymmetric)
+
+        jump = self.analyzer.history[-1]
+        self.assertIsNotNone(jump["metrics"]["arm_swing_symmetry_px"])
+        self.assertAlmostEqual(jump["metrics"]["arm_swing_symmetry_px"], 80.0, delta=0.1)
+
+    def test_peak_wrist_height_ratio_computed_at_peak(self):
+        """peak_wrist_height_ratio should be non-null when upper_body is tracked through the jump."""
+        ub = self._make_upper_body(l_wrist_y=100, r_wrist_y=100, shoulder_y=200)
+        self.analyzer.analyze_frame(1, (170, 175), 400, frame_time=0.0, upper_body=ub)
+        # jump start
+        self.analyzer.analyze_frame(1, (170, 175), 300, frame_time=0.1, upper_body=ub)
+        # peak
+        self.analyzer.analyze_frame(1, (170, 175), 260, frame_time=0.2, upper_body=ub)
+        # landing
+        self.analyzer.analyze_frame(1, (145, 148), 400, frame_time=0.7, upper_body=ub)
+
+        jump = self.analyzer.history[-1]
+        self.assertIsNotNone(jump["metrics"]["peak_wrist_height_ratio"])
+        # ratio = (hip_y_peak - avg_wrist_y) / (hip_y_peak - avg_shoulder_y)
+        # = (260 - 100) / (260 - 200) = 160 / 60 ≈ 2.67
+        self.assertAlmostEqual(jump["metrics"]["peak_wrist_height_ratio"], 2.667, delta=0.1)
+
+    def test_metrics_null_without_upper_body(self):
+        """Without upper_body, arm/wrist metrics should be null."""
+        self.analyzer.analyze_frame(1, (170, 175), 400, frame_time=0.0)
+        self.analyzer.analyze_frame(1, (170, 175), 300, frame_time=0.1)
+        self.analyzer.analyze_frame(1, (145, 148), 400, frame_time=0.6)
+
+        jump = self.analyzer.history[-1]
+        self.assertIsNone(jump["metrics"]["arm_swing_symmetry_px"])
+        self.assertIsNone(jump["metrics"]["peak_wrist_height_ratio"])
+
+
 class TestSessionSummary(unittest.TestCase):
     def setUp(self):
         self.analyzer = JumpAnalyzer()
@@ -329,7 +393,7 @@ class TestSessionSummary(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             path = f.name
         try:
-            self.analyzer.save_logs(path)
+            self.analyzer.save_logs(path, video_name="test_video.mov")
             with open(path) as f:
                 data = json.load(f)
             summary = data[0]
@@ -337,6 +401,7 @@ class TestSessionSummary(unittest.TestCase):
             self.assertEqual(summary['jump_count'], 1)
             self.assertIsNone(summary['jump_height_consistency_cm'])
             self.assertIsNone(summary['air_time_consistency_sec'])
+            self.assertEqual(summary['video'], 'test_video.mov')
         finally:
             os.unlink(path)
 
@@ -357,7 +422,7 @@ class TestSessionSummary(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
             path = f.name
         try:
-            self.analyzer.save_logs(path)
+            self.analyzer.save_logs(path, video_name="test_video.mov")
             with open(path) as f:
                 data = json.load(f)
             summary = data[0]
@@ -366,6 +431,7 @@ class TestSessionSummary(unittest.TestCase):
             self.assertIsNotNone(summary['jump_height_consistency_cm'])
             self.assertGreater(summary['jump_height_consistency_cm'], 0)
             self.assertIsNotNone(summary['air_time_consistency_sec'])
+            self.assertEqual(summary['video'], 'test_video.mov')
         finally:
             os.unlink(path)
 

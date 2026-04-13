@@ -274,6 +274,7 @@ class JumpAnalyzer:
             if self.post_landing_active:
                 self._finalize_landing_absorption()
                 self.post_landing_active = False
+                self.post_landing_knee = []
 
             self.is_jumping = True
             self.jump_count += 1
@@ -399,7 +400,7 @@ class JumpAnalyzer:
                 self.post_landing_start  = frame_time
                 self.post_landing_knee   = [(frame_time, l_angle, r_angle)]  # seed with landing frame
 
-    def save_logs(self, filename="jump_analysis.json"):
+    def save_logs(self, filename="jump_analysis.json", video_name=None):
         # Compute session summary
         height_consistency = None
         if len(self.all_jump_heights) >= 2:
@@ -410,6 +411,7 @@ class JumpAnalyzer:
 
         session_summary = {
             "event": "SESSION_SUMMARY",
+            "video": video_name,
             "jump_count": self.jump_count,
             "jump_height_consistency_cm": height_consistency,
             "air_time_consistency_sec": air_time_consistency,
