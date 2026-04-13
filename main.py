@@ -149,19 +149,16 @@ def main():
             
         player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = tracker.process_frame(frame)
         if player_id is not None:
-            # Map position if calibrator is available, else use pixel pos
-            pos = calibrator.transform_point(ground_pos) if calibrator else ground_pos
+            # Only pass court coordinates when calibrator exists — pixel coords are meaningless for cm metrics
+            court_pos = calibrator.transform_point(ground_pos) if calibrator else None
             foot_court_pos = None
-            if foot_pixels is not None:
+            if foot_pixels is not None and calibrator:
                 l_foot, r_foot = foot_pixels
-                if calibrator:
-                    foot_court_pos = (
-                        calibrator.transform_point(l_foot),
-                        calibrator.transform_point(r_foot),
-                    )
-                else:
-                    foot_court_pos = (l_foot, r_foot)
-            analyzer.analyze_frame(player_id, knee_angles, hip_y, pos, frame_time, foot_court_pos, upper_body)
+                foot_court_pos = (
+                    calibrator.transform_point(l_foot),
+                    calibrator.transform_point(r_foot),
+                )
+            analyzer.analyze_frame(player_id, knee_angles, hip_y, court_pos, frame_time, foot_court_pos, upper_body)
             
             if args.show:
                 l_angle, r_angle = knee_angles
