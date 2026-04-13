@@ -1,8 +1,6 @@
 import cv2
 import argparse
 import os
-import json
-import numpy as np
 from camera_calib import CameraCalibrator
 from tracker import PlayerTracker
 from analyzer import JumpAnalyzer
@@ -101,28 +99,21 @@ def select_target_player(video_path, tracker):
 def main():
     parser = argparse.ArgumentParser(description="Volleyball Mechanics Analyzer")
     parser.add_argument("--video", type=str, required=True, help="Path to the video file")
-    parser.add_argument("--no_calibrate", action="store_true", help="Skip court calibration (reduces metric accuracy)")
+    parser.add_argument("--calibrate", action="store_true",
+        help="Enable court calibration for position-based metrics (drift, approach velocity, etc.)")
     parser.add_argument("--player_id", type=int, default=None, help="Specific Player ID to track")
     parser.add_argument("--output", type=str, default="output/analysis_results.json", help="Path to save results")
     parser.add_argument("--show", action="store_true", help="Display the video with overlays")
-    parser.add_argument("--debug", action="store_true", help="Bypass manual calibration with hardcoded values")
-    
+
     args = parser.parse_args()
 
     # 1. Tracker Initialization
     tracker = PlayerTracker(target_player_id=args.player_id)
-    
-    # 2. Calibration (Now enabled by default)
+
+    # 2. Calibration
     calibrator = None
-    if args.debug:
-        print("Step 1: DEBUG MODE - Using hardcoded court corners.")
-        print("  WARNING: Hardcoded corners are placeholders and will not match your video.")
-        print("  Coordinate-based metrics (drift, positions, approach velocity, takeoff angle)")
-        print("  will be unreliable. Run without --debug for accurate court measurements.")
-        corners = [(400, 200), (1500, 200), (1800, 900), (100, 900)]
-        calibrator = CameraCalibrator(corners)
-    elif not args.no_calibrate:
-        print("Step 1: Court Calibration.")
+    if args.calibrate:
+        print("Court Calibration: click the 4 court corners (top-left, top-right, bottom-right, bottom-left).")
         cap = cv2.VideoCapture(args.video)
         ret, frame = cap.read()
         cap.release()
@@ -132,8 +123,8 @@ def main():
                 calibrator = CameraCalibrator(corners)
 
     # 3. Player Selection
-    if args.player_id is None and not args.debug:
-        print("Step 2: Please click on the player.")
+    if args.player_id is None:
+        print("Player selection: click on the athlete to track.")
         target_id = select_target_player(args.video, tracker)
         if target_id is not None:
             tracker.target_player_id = target_id
@@ -141,8 +132,8 @@ def main():
     analyzer = JumpAnalyzer()
     cap = cv2.VideoCapture(args.video)
     fps = cap.get(cv2.CAP_PROP_FPS)
-    
-    print(f"Step 2: Processing video {args.video}...")
+
+    print(f"Processing video: {args.video}")
     
     while cap.isOpened():
         frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
