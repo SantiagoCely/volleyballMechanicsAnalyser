@@ -91,33 +91,36 @@ class TestE2EPipelineStructure(unittest.TestCase):
     def test_event_count(self):
         self.assertEqual(len(self.events), self.expected["event_count"])
 
-    def test_first_event_is_jump_start(self):
-        self.assertEqual(self.events[0]["event"], "JUMP_START")
+    def test_only_event_is_jump(self):
+        self.assertEqual(self.events[0]["event"], "JUMP")
 
-    def test_second_event_is_landing(self):
-        self.assertEqual(self.events[1]["event"], "LANDING")
+    def test_jump_has_required_top_level_keys(self):
+        jump = self.events[0]
+        for key in ("event", "jump_num", "player_id",
+                    "start_video_time_sec", "end_video_time_sec",
+                    "status", "takeoff", "metrics"):
+            self.assertIn(key, jump, msg=f"JUMP missing key: {key}")
 
-    def test_jump_start_has_required_keys(self):
-        details = self.events[0]["details"]
-        for key in ("player_id", "jump_num", "takeoff_pos",
-                    "approach_velocity_cms", "takeoff_stance_width_cm"):
-            self.assertIn(key, details, msg=f"JUMP_START missing key: {key}")
+    def test_jump_takeoff_has_required_keys(self):
+        takeoff = self.events[0]["takeoff"]
+        for key in ("pos", "approach_velocity_cms", "stance_width_cm",
+                    "crouch_depth_deg", "crouch_duration_sec", "trunk_lean_deg"):
+            self.assertIn(key, takeoff, msg=f"takeoff missing key: {key}")
 
-    def test_landing_has_required_metric_keys(self):
-        metrics = self.events[1]["details"]["metrics"]
+    def test_jump_metrics_has_required_keys(self):
+        metrics = self.events[0]["metrics"]
         for key in ("air_time_sec", "jump_height_est_cm", "jump_height_est_inch",
-                    "knee_angles", "drift_cm", "approach_velocity_cms",
-                    "takeoff_stance_width_cm", "takeoff_angle_deg",
+                    "knee_angles", "knee_symmetry_deg", "drift_cm", "takeoff_angle_deg",
                     "com_flight_drift_cm"):
-            self.assertIn(key, metrics, msg=f"LANDING metrics missing key: {key}")
+            self.assertIn(key, metrics, msg=f"metrics missing key: {key}")
 
     def test_drift_cm_has_all_components(self):
-        drift = self.events[1]["details"]["metrics"]["drift_cm"]
+        drift = self.events[0]["metrics"]["drift_cm"]
         for key in ("forward_back", "side_to_side", "magnitude"):
             self.assertIn(key, drift, msg=f"drift_cm missing key: {key}")
 
-    def test_landing_has_landing_pos(self):
-        self.assertIn("landing_pos", self.events[1]["details"])
+    def test_jump_has_landing_pos(self):
+        self.assertIn("landing_pos", self.events[0])
 
     def test_jump_count(self):
         self.assertEqual(self.analyzer.jump_count, 1)
@@ -133,104 +136,105 @@ class TestE2EMetricRegression(unittest.TestCase):
     def setUp(self):
         self.analyzer = _run_fixture()
         self.expected = _load_expected()
-        self.jump_start = self.analyzer.history[0]["details"]
-        self.landing = self.analyzer.history[1]["details"]
-        self.metrics = self.landing["metrics"]
+        self.jump = self.analyzer.history[0]
+        self.takeoff = self.jump["takeoff"]
+        self.metrics = self.jump["metrics"]
 
-    # JUMP_START metrics
-    def test_approach_velocity_at_jump_start(self):
+    def test_approach_velocity_in_takeoff(self):
         self.assertAlmostEqual(
-            self.jump_start["approach_velocity_cms"],
-            self.expected["jump_start"]["approach_velocity_cms"],
+            self.takeoff["approach_velocity_cms"],
+            self.expected["jump"]["takeoff"]["approach_velocity_cms"],
             delta=1.0,
         )
 
-    def test_takeoff_stance_width_at_jump_start(self):
+    def test_takeoff_stance_width(self):
         self.assertAlmostEqual(
-            self.jump_start["takeoff_stance_width_cm"],
-            self.expected["jump_start"]["takeoff_stance_width_cm"],
+            self.takeoff["stance_width_cm"],
+            self.expected["jump"]["takeoff"]["stance_width_cm"],
             delta=0.1,
         )
 
-    # LANDING status
-    def test_landing_status(self):
-        self.assertEqual(self.landing["status"], self.expected["landing"]["status"])
+    def test_status(self):
+        self.assertEqual(self.jump["status"], self.expected["jump"]["status"])
 
-    # Performance metrics
     def test_air_time(self):
         self.assertAlmostEqual(
             self.metrics["air_time_sec"],
-            self.expected["landing"]["metrics"]["air_time_sec"],
+            self.expected["jump"]["metrics"]["air_time_sec"],
             places=3,
         )
 
     def test_jump_height_cm(self):
         self.assertAlmostEqual(
             self.metrics["jump_height_est_cm"],
-            self.expected["landing"]["metrics"]["jump_height_est_cm"],
+            self.expected["jump"]["metrics"]["jump_height_est_cm"],
             delta=0.1,
         )
 
     def test_jump_height_inch(self):
         self.assertAlmostEqual(
             self.metrics["jump_height_est_inch"],
-            self.expected["landing"]["metrics"]["jump_height_est_inch"],
+            self.expected["jump"]["metrics"]["jump_height_est_inch"],
             delta=0.1,
         )
 
     def test_knee_angles(self):
-        exp = self.expected["landing"]["metrics"]["knee_angles"]
+        exp = self.expected["jump"]["metrics"]["knee_angles"]
         self.assertAlmostEqual(self.metrics["knee_angles"]["left"],  exp["left"],  delta=0.1)
         self.assertAlmostEqual(self.metrics["knee_angles"]["right"], exp["right"], delta=0.1)
+
+    def test_knee_symmetry(self):
+        self.assertAlmostEqual(
+            self.metrics["knee_symmetry_deg"],
+            self.expected["jump"]["metrics"]["knee_symmetry_deg"],
+            delta=0.1,
+        )
 
     def test_drift_forward_back(self):
         self.assertAlmostEqual(
             self.metrics["drift_cm"]["forward_back"],
-            self.expected["landing"]["metrics"]["drift_cm"]["forward_back"],
+            self.expected["jump"]["metrics"]["drift_cm"]["forward_back"],
             delta=0.1,
         )
 
     def test_drift_side_to_side(self):
         self.assertAlmostEqual(
             self.metrics["drift_cm"]["side_to_side"],
-            self.expected["landing"]["metrics"]["drift_cm"]["side_to_side"],
+            self.expected["jump"]["metrics"]["drift_cm"]["side_to_side"],
             delta=0.1,
         )
 
     def test_drift_magnitude(self):
         self.assertAlmostEqual(
             self.metrics["drift_cm"]["magnitude"],
-            self.expected["landing"]["metrics"]["drift_cm"]["magnitude"],
-            delta=0.1,
-        )
-
-    # Pro metrics
-    def test_approach_velocity_in_landing(self):
-        self.assertAlmostEqual(
-            self.metrics["approach_velocity_cms"],
-            self.expected["landing"]["metrics"]["approach_velocity_cms"],
-            delta=1.0,
-        )
-
-    def test_takeoff_stance_width_in_landing(self):
-        self.assertAlmostEqual(
-            self.metrics["takeoff_stance_width_cm"],
-            self.expected["landing"]["metrics"]["takeoff_stance_width_cm"],
+            self.expected["jump"]["metrics"]["drift_cm"]["magnitude"],
             delta=0.1,
         )
 
     def test_takeoff_angle(self):
         self.assertAlmostEqual(
             self.metrics["takeoff_angle_deg"],
-            self.expected["landing"]["metrics"]["takeoff_angle_deg"],
+            self.expected["jump"]["metrics"]["takeoff_angle_deg"],
             delta=0.2,
         )
 
     def test_com_flight_drift(self):
         self.assertAlmostEqual(
             self.metrics["com_flight_drift_cm"],
-            self.expected["landing"]["metrics"]["com_flight_drift_cm"],
+            self.expected["jump"]["metrics"]["com_flight_drift_cm"],
             delta=0.1,
+        )
+
+    def test_video_timestamps(self):
+        self.assertAlmostEqual(
+            self.jump["start_video_time_sec"],
+            self.expected["jump"]["start_video_time_sec"],
+            delta=0.01,
+        )
+        self.assertAlmostEqual(
+            self.jump["end_video_time_sec"],
+            self.expected["jump"]["end_video_time_sec"],
+            delta=0.01,
         )
 
 
@@ -252,7 +256,7 @@ class TestE2EOutputJSON(unittest.TestCase):
             # Remaining entries must match history exactly
             for saved, original in zip(reloaded[1:], analyzer.history):
                 self.assertEqual(saved["event"], original["event"])
-                self.assertEqual(saved["details"], original["details"])
+                self.assertEqual(saved["metrics"], original["metrics"])
         finally:
             os.unlink(tmp_path)
 
@@ -396,7 +400,7 @@ class TestPipelineIntegration(unittest.TestCase):
                     continue
                 foot_court_pos = foot_pixels  # no calibrator in this test
                 analyzer.analyze_frame(player_id, knee_angles, hip_y,
-                                       ground_pos, frame_time, foot_court_pos)
+                                       ground_pos, frame_time, foot_court_pos, upper_body)
 
             cap.release()
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -411,7 +415,7 @@ class TestPipelineIntegration(unittest.TestCase):
             self._run_pipeline_loop(video_path, output_path)
             self.assertTrue(os.path.exists(output_path))
 
-    def test_output_contains_jump_start_and_landing(self):
+    def test_output_contains_jump_and_session_summary(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             video_path = os.path.join(tmp_dir, "test.avi")
             output_path = os.path.join(tmp_dir, "output", "results.json")
@@ -422,8 +426,8 @@ class TestPipelineIntegration(unittest.TestCase):
                 data = json.load(f)
 
             event_types = [e["event"] for e in data]
-            self.assertIn("JUMP_START", event_types)
-            self.assertIn("LANDING", event_types)
+            self.assertIn("JUMP", event_types)
+            self.assertIn("SESSION_SUMMARY", event_types)
 
     def test_tracker_return_tuple_length_is_consumed_correctly(self):
         """Changing process_frame's return length breaks the pipeline — catch it."""
@@ -448,9 +452,9 @@ class TestPipelineIntegration(unittest.TestCase):
                         break
                     result = tracker.process_frame(frame)
                     try:
-                        if result is None or len(result) != 5:
+                        if result is None or len(result) != 6:
                             continue  # pipeline skips mismatched tuples
-                        player_id, knee_angles, hip_y, ground_pos, foot_pixels = result
+                        player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = result
                     except Exception as e:
                         errors.append(str(e))
                 cap.release()

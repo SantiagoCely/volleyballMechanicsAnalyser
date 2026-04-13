@@ -1,31 +1,38 @@
 {
     "_comment": "Pre-computed expected metrics for single_jump_sequence.json. Update this file whenever intentional metric changes are made.",
-    "event_count": 2,
-    "jump_start": {
-        "event": "JUMP_START",
-        "player_id": 1,
+    "event_count": 1,
+    "jump": {
+        "event": "JUMP",
         "jump_num": 1,
-        "takeoff_pos": [300, 0],
-        "approach_velocity_cms": 500.0,
-        "takeoff_stance_width_cm": 20.0
-    },
-    "landing": {
-        "event": "LANDING",
         "player_id": 1,
+        "start_video_time_sec": 0.6,
+        "end_video_time_sec": 1.0,
         "status": "SAFE",
+        "takeoff": {
+            "pos": [300, 0],
+            "approach_velocity_cms": 500.0,
+            "stance_width_cm": 20.0,
+            "crouch_depth_deg": 171.0,
+            "crouch_duration_sec": 0.0,
+            "trunk_lean_deg": null
+        },
         "metrics": {
             "air_time_sec": 0.4,
             "jump_height_est_cm": 35.0,
             "jump_height_est_inch": 13.8,
+            "takeoff_angle_deg": 27.7,
             "knee_angles": {"left": 145.0, "right": 148.0},
+            "knee_symmetry_deg": 3.0,
+            "min_landing_knee_angle_deg": null,
+            "landing_absorption_duration_sec": null,
+            "landing_knee_flexion_rate_degs": null,
+            "peak_wrist_height_ratio": null,
+            "arm_swing_symmetry_px": null,
             "drift_cm": {
-                "forward_back": 5.0,
-                "side_to_side": 5.0,
+                "forward_back": 5,
+                "side_to_side": 5,
                 "magnitude": 7.1
             },
-            "approach_velocity_cms": 500.0,
-            "takeoff_stance_width_cm": 20.0,
-            "takeoff_angle_deg": 27.7,
             "com_flight_drift_cm": 0.0
         },
         "landing_pos": [305, 5]
