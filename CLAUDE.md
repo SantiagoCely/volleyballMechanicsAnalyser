@@ -2,23 +2,25 @@
 
 ## Running the analyser
 
-### Normal mode
-Prompts you to click 4 court corners for calibration, then click the player to track:
+### Default mode
+Tracks the player (click to select) and computes all non-calibration metrics automatically:
 ```bash
 python main.py --video <path_to_video>
+python main.py --video single_jump.mov --player_id 1
+python main.py --video multiple_jumps.mov --player_id 1
 ```
 
-### Debug mode (no UI interaction required)
-Uses hardcoded court corners and tracks player ID 1 directly — use this for quick testing and development:
+### Calibration mode
+Adds court calibration (click 4 corners) to unlock position-based metrics (drift, approach velocity, stance width):
 ```bash
-python main.py --video single_jump.mov --debug --player_id 1
-python main.py --video multiple_jumps.mov --debug --player_id 1
+python main.py --video <path_to_video> --calibrate
+python main.py --video training.mov --player_id 1 --calibrate
 ```
 
 ### Other flags
 | Flag | Description |
 |---|---|
-| `--no_calibrate` | Skip court calibration (drift metrics will be in pixels, not cm) |
+| `--calibrate` | Enable court calibration for position-based metrics (drift, approach velocity, stance width, takeoff pos) |
 | `--player_id <id>` | Track a specific player ID without clicking |
 | `--output <path>` | Save results JSON to a custom path (default: `output/analysis_results.json`) |
 | `--show` | Display the video with overlays while processing |
@@ -52,7 +54,7 @@ python -m pytest tests/test_analyzer.py -v
 
 ### End-to-end test layers (`test_e2e.py`)
 - **Layer 1 — Analyzer fixture tests**: feed a known 11-frame sequence through `JumpAnalyzer` and pin every metric value. Catches silent regressions in metric formulas.
-- **Layer 2 — Tracker smoke tests** (`@pytest.mark.slow`): verify `PlayerTracker` initialises and `process_frame` returns a 5-tuple without crashing.
+- **Layer 2 — Tracker smoke tests** (`@pytest.mark.slow`): verify `PlayerTracker` initialises and `process_frame` returns a 6-tuple without crashing.
 - **Layer 3 — Pipeline integration tests**: mock the tracker, create a synthetic video, run the full `main.py` processing loop, and assert on the saved JSON.
 
 ### Adding tests for new features
@@ -66,16 +68,14 @@ python -m pytest tests/test_analyzer.py -v
 
 ### Adding a new metric
 - Add a regression test to `TestE2EMetricRegression` in `tests/test_e2e.py` and update `tests/fixtures/expected_output.json` with the pre-computed expected value
-- Document the new field in `README.md` under the correct table (JUMP_START or LANDING metrics), including units and what the value range means
+- Document the new field in `README.md` under the JUMP metrics table, including units and what the value range means
 
 ### Verify consistency after any change
 Run the tool at least twice on the same video and confirm the output is stable before calling it done:
 ```bash
-python main.py --video single_jump.mov --debug --player_id 1 --output output/run1.json
-python main.py --video single_jump.mov --debug --player_id 1 --output output/run2.json
+python main.py --video single_jump.mov --player_id 1 --output output/run1.json
+python main.py --video single_jump.mov --player_id 1 --output output/run2.json
 diff output/run1.json output/run2.json
 ```
 
-### Debug mode is for code flow, not metric accuracy
-The `--debug` flag uses hardcoded court corners that don't match any real video. Coordinate-based metrics (`drift_cm`, `approach_velocity_cms`, `takeoff_pos`, etc.) will have wrong absolute values. Use debug mode to verify the tool runs without crashing and that jump detection triggers — not to validate the numbers. For accurate metrics, run with proper court calibration.
 
