@@ -52,7 +52,7 @@ class PlayerTracker:
         results = self.model.track(frame, persist=True, tracker="bytetrack.yaml", device=self.device, verbose=False)
         
         if not results or results[0].boxes.id is None:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.int().cpu().numpy()
@@ -106,9 +106,26 @@ class PlayerTracker:
                 l_ankle_pixel = (x1 + l_ankle.x * roi_width, y1 + l_ankle.y * roi_height)
                 r_ankle_pixel = (x1 + r_ankle.x * roi_width, y1 + r_ankle.y * roi_height)
 
-                return track_id, (l_angle, r_angle), avg_hip_y_frame, (ground_x, ground_y), (l_ankle_pixel, r_ankle_pixel)
+                # Upper body landmarks (pixel coords mapped to full frame)
+                l_shoulder = landmarks[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
+                r_shoulder = landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
+                l_wrist = landmarks[self.mp_pose.PoseLandmark.LEFT_WRIST]
+                r_wrist = landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST]
 
-        return None, None, None, None, None
+                upper_body = {
+                    "shoulders_px": (
+                        (int(x1 + l_shoulder.x * roi_width), int(y1 + l_shoulder.y * roi_height)),
+                        (int(x1 + r_shoulder.x * roi_width), int(y1 + r_shoulder.y * roi_height)),
+                    ),
+                    "wrists_px": (
+                        (int(x1 + l_wrist.x * roi_width), int(y1 + l_wrist.y * roi_height)),
+                        (int(x1 + r_wrist.x * roi_width), int(y1 + r_wrist.y * roi_height)),
+                    ),
+                }
+
+                return track_id, (l_angle, r_angle), avg_hip_y_frame, (ground_x, ground_y), (l_ankle_pixel, r_ankle_pixel), upper_body
+
+        return None, None, None, None, None, None
 
 if __name__ == "__main__":
     tracker = PlayerTracker()
