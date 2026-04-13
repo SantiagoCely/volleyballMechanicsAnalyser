@@ -47,25 +47,28 @@ class JumpAnalyzer:
         self.post_landing_knee    = []   # list of (frame_time, l_angle, r_angle)
         self.post_landing_window  = 0.3  # seconds
 
-        # Session-level accumulators (populated from each LANDING event)
+        # ISO timestamp captured at jump start
+        self.jump_start_timestamp = None
+
+        # Session-level accumulators (populated from each JUMP event)
         self.all_jump_heights = []
         self.all_air_times    = []
 
+    @staticmethod
+    def _make_serializable(obj):
+        if hasattr(obj, 'tolist'):
+            return obj.tolist()
+        if hasattr(obj, 'item'):
+            return obj.item()
+        if isinstance(obj, dict):
+            return {k: JumpAnalyzer._make_serializable(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [JumpAnalyzer._make_serializable(v) for v in obj]
+        return obj
+
     def log_event(self, event_type, details):
         timestamp = datetime.now().isoformat()
-
-        def make_serializable(obj):
-            if hasattr(obj, 'tolist'):
-                return obj.tolist()
-            if hasattr(obj, 'item'):
-                return obj.item()
-            if isinstance(obj, dict):
-                return {k: make_serializable(v) for k, v in obj.items()}
-            if isinstance(obj, (list, tuple)):
-                return [make_serializable(v) for v in obj]
-            return obj
-
-        serializable_details = make_serializable(details)
+        serializable_details = self._make_serializable(details)
         log_entry = {
             "timestamp": timestamp,
             "event": event_type,
@@ -231,12 +234,12 @@ class JumpAnalyzer:
         else:
             flexion_rate = 0.0
 
-        # Amend the most recent LANDING event
+        # Amend the most recent JUMP event
         for entry in reversed(self.history):
-            if entry["event"] == "LANDING":
-                entry["details"]["metrics"]["min_landing_knee_angle_deg"] = round(min_angle, 1)
-                entry["details"]["metrics"]["landing_absorption_duration_sec"] = round(absorption_duration, 3)
-                entry["details"]["metrics"]["landing_knee_flexion_rate_degs"] = round(flexion_rate, 1)
+            if entry.get("event") == "JUMP":
+                entry["metrics"]["min_landing_knee_angle_deg"] = round(min_angle, 1)
+                entry["metrics"]["landing_absorption_duration_sec"] = round(absorption_duration, 3)
+                entry["metrics"]["landing_knee_flexion_rate_degs"] = round(flexion_rate, 1)
                 break
 
     def analyze_frame(self, player_id, knee_angles, current_hip_y, court_pos=None, frame_time=0, foot_court_pos=None, upper_body=None):
@@ -288,22 +291,10 @@ class JumpAnalyzer:
             self.takeoff_approach_velocity = self._compute_approach_velocity(frame_time)
             self.takeoff_stance_width = self._compute_stance_width(foot_court_pos)
 
-            details = {"player_id": player_id, "jump_num": self.jump_count}
-            if court_pos is not None:
-                details["takeoff_pos"] = court_pos
-            if self.takeoff_approach_velocity is not None:
-                details["approach_velocity_cms"] = round(self.takeoff_approach_velocity, 1)
-            if self.takeoff_stance_width is not None:
-                details["takeoff_stance_width_cm"] = round(self.takeoff_stance_width, 1)
+            # Capture crouch metrics now so they are available at landing
+            self._takeoff_crouch_depth, self._takeoff_crouch_duration = self._compute_takeoff_crouch(frame_time)
 
-            crouch_depth, crouch_duration = self._compute_takeoff_crouch(frame_time)
-            if crouch_depth is not None:
-                details["takeoff_crouch_depth_deg"] = round(crouch_depth, 1)
-                details["takeoff_crouch_duration_sec"] = round(crouch_duration, 3)
-
-            details["trunk_lean_deg"] = None  # requires hip_x pixel, not currently in data flow
-
-            self.log_event("JUMP_START", details)
+            self.jump_start_timestamp = datetime.now().isoformat()
 
         # 2. DURING JUMP (TRACK PEAK & CoM PATH)
         elif self.is_jumping:
@@ -328,65 +319,82 @@ class JumpAnalyzer:
 
                 is_stiff = l_angle > self.stiff_landing_threshold or r_angle > self.stiff_landing_threshold
 
-                details = {
-                    "player_id": player_id,
-                    "status": "STIFF" if is_stiff else "SAFE",
-                    "metrics": {
-                        "air_time_sec": round(air_time, 3),
-                        "jump_height_est_cm": round(jump_height_cm, 1),
-                        "jump_height_est_inch": round(jump_height_inch, 1),
-                        "knee_angles": {"left": round(l_angle, 1), "right": round(r_angle, 1)},
-                    }
+                end_timestamp = datetime.now().isoformat()
+
+                # Build takeoff section
+                crouch_depth = getattr(self, '_takeoff_crouch_depth', None)
+                crouch_duration = getattr(self, '_takeoff_crouch_duration', None)
+
+                takeoff_section = {
+                    "pos": list(self.jump_start_pos) if self.jump_start_pos is not None else None,
                 }
-
-                if court_pos is not None and self.jump_start_pos is not None:
-                    drift_x = court_pos[0] - self.jump_start_pos[0]
-                    drift_y = court_pos[1] - self.jump_start_pos[1]
-                    drift_magnitude = math.sqrt(drift_x ** 2 + drift_y ** 2)
-                    details["metrics"]["drift_cm"] = {
-                        "forward_back": round(drift_y, 1),
-                        "side_to_side": round(drift_x, 1),
-                        "magnitude": round(drift_magnitude, 1),
-                    }
-                    details["landing_pos"] = court_pos
-
-                # Pro metrics
                 if self.takeoff_approach_velocity is not None:
-                    details["metrics"]["approach_velocity_cms"] = round(self.takeoff_approach_velocity, 1)
-
+                    takeoff_section["approach_velocity_cms"] = round(self.takeoff_approach_velocity, 1)
                 if self.takeoff_stance_width is not None:
-                    details["metrics"]["takeoff_stance_width_cm"] = round(self.takeoff_stance_width, 1)
+                    takeoff_section["stance_width_cm"] = round(self.takeoff_stance_width, 1)
+                if crouch_depth is not None:
+                    takeoff_section["crouch_depth_deg"] = round(crouch_depth, 1)
+                    takeoff_section["crouch_duration_sec"] = round(crouch_duration, 3)
+                takeoff_section["trunk_lean_deg"] = None  # hip_x not in current data flow
 
+                # Compute optional upper-body metrics
                 takeoff_angle = self._compute_takeoff_angle(jump_height_cm, self.takeoff_approach_velocity)
-                if takeoff_angle is not None:
-                    details["metrics"]["takeoff_angle_deg"] = round(takeoff_angle, 1)
-
-                # CoM drift magnitude during flight (max lateral deviation from straight path)
-                if len(self.com_positions_during_jump) >= 2 and self.jump_start_pos is not None and court_pos is not None:
-                    com_drift_mag = self._compute_com_flight_drift(self.jump_start_pos, court_pos, self.com_positions_during_jump)
-                    details["metrics"]["com_flight_drift_cm"] = round(com_drift_mag, 1)
-
-                # New non-calibration metrics
-                details["metrics"]["knee_symmetry_deg"] = round(self._compute_knee_symmetry(knee_angles), 1)
-
-                # Upper body metrics at peak
                 peak_wrist_ratio = self._compute_peak_wrist_height_ratio(self.upper_body_at_peak, self.peak_hip_y)
-                if peak_wrist_ratio is not None:
-                    details["metrics"]["peak_wrist_height_ratio"] = round(peak_wrist_ratio, 3)
-
-                # Arm swing symmetry at takeoff (from approach_upper_body last frame before jump)
                 arm_sym = None
                 if self.approach_upper_body:
                     _, ub = self.approach_upper_body[-1]
                     arm_sym = self._compute_arm_swing_symmetry(ub)
-                if arm_sym is not None:
-                    details["metrics"]["arm_swing_symmetry_px"] = round(arm_sym, 1)
+
+                # Build metrics section (all fields always present, null when unavailable)
+                metrics_section = {
+                    "air_time_sec": round(air_time, 3),
+                    "jump_height_est_cm": round(jump_height_cm, 1),
+                    "jump_height_est_inch": round(jump_height_inch, 1),
+                    "takeoff_angle_deg": round(takeoff_angle, 1) if takeoff_angle is not None else None,
+                    "knee_angles": {"left": round(l_angle, 1), "right": round(r_angle, 1)},
+                    "knee_symmetry_deg": round(self._compute_knee_symmetry(knee_angles), 1),
+                    "min_landing_knee_angle_deg": None,      # filled by _finalize_landing_absorption
+                    "landing_absorption_duration_sec": None, # filled by _finalize_landing_absorption
+                    "landing_knee_flexion_rate_degs": None,  # filled by _finalize_landing_absorption
+                    "peak_wrist_height_ratio": round(peak_wrist_ratio, 3) if peak_wrist_ratio is not None else None,
+                    "arm_swing_symmetry_px": round(arm_sym, 1) if arm_sym is not None else None,
+                }
+
+                # Add calibration-dependent metrics only when available
+                if court_pos is not None and self.jump_start_pos is not None:
+                    drift_x = court_pos[0] - self.jump_start_pos[0]
+                    drift_y = court_pos[1] - self.jump_start_pos[1]
+                    drift_magnitude = math.sqrt(drift_x ** 2 + drift_y ** 2)
+                    metrics_section["drift_cm"] = {
+                        "forward_back": round(drift_y, 1),
+                        "side_to_side": round(drift_x, 1),
+                        "magnitude": round(drift_magnitude, 1),
+                    }
+
+                if len(self.com_positions_during_jump) >= 2 and self.jump_start_pos is not None and court_pos is not None:
+                    com_drift = self._compute_com_flight_drift(self.jump_start_pos, court_pos, self.com_positions_during_jump)
+                    metrics_section["com_flight_drift_cm"] = round(com_drift, 1)
+
+                # Build unified JUMP entry
+                jump_entry = {
+                    "event": "JUMP",
+                    "jump_num": self.jump_count,
+                    "player_id": self._make_serializable(player_id),
+                    "start_timestamp": self.jump_start_timestamp,
+                    "end_timestamp": end_timestamp,
+                    "status": "STIFF" if is_stiff else "SAFE",
+                    "takeoff": self._make_serializable(takeoff_section),
+                    "metrics": self._make_serializable(metrics_section),
+                }
+                if court_pos is not None:
+                    jump_entry["landing_pos"] = list(court_pos)
+
+                self.history.append(jump_entry)
+                print(f"[{end_timestamp}] JUMP #{self.jump_count}: {jump_entry['status']}, air_time={round(air_time, 3)}s, height={round(jump_height_cm, 1)}cm")
 
                 # Session accumulators
                 self.all_jump_heights.append(jump_height_cm)
                 self.all_air_times.append(air_time)
-
-                self.log_event("LANDING", details)
 
                 # Reset upper body at peak for next jump
                 self.upper_body_at_peak = None
