@@ -23,6 +23,18 @@ class PlayerTracker:
         self.model = YOLO(model_path)
         self.model.to(self.device)
         self.target_player_id = target_player_id
+
+        # Last known bounding-box center and height of the target player (for re-ID after occlusion)
+        self._last_known_center = None
+        self._last_known_bbox_height = None
+        # Hue histogram of the target player's torso — colour signature for re-ID
+        self._target_hue_hist = None
+        # How many consecutive frames the target has been missing
+        self._frames_missing = 0
+        # Re-ID thresholds
+        self._reacquire_threshold_px  = 200   # max centre-to-centre distance (px)
+        self._reacquire_height_tol    = 0.30  # bbox height must be within ±30% of last known
+        self._reacquire_colour_thresh = 0.5   # minimum hue-histogram correlation (0–1)
         
         # Initialize MediaPipe Pose
         self.mp_pose = mp.solutions.pose
@@ -46,6 +58,29 @@ class PlayerTracker:
         angle = np.degrees(np.arccos(np.clip(cosine_angle, -1.0, 1.0)))
         return angle
 
+    @staticmethod
+    def _torso_hue_hist(frame, box):
+        """Return a normalised H-channel histogram for the torso region of a bounding box.
+
+        We slice the vertical middle 25–65% of the box to capture the jersey while
+        avoiding the head (top) and legs (bottom), which are noisier for colour ID.
+        36 bins gives 10° resolution in hue — enough to separate distinct jersey colours
+        without overfitting to exact lighting conditions.
+        Returns None if the crop is empty.
+        """
+        x1, y1, x2, y2 = map(int, box[:4])
+        h = y2 - y1
+        torso_y1 = y1 + int(h * 0.25)
+        torso_y2 = y1 + int(h * 0.65)
+        crop = frame[max(0, torso_y1):min(frame.shape[0], torso_y2),
+                     max(0, x1):min(frame.shape[1], x2)]
+        if crop.size == 0:
+            return None
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        hist = cv2.calcHist([hsv], [0], None, [36], [0, 180])  # hue channel only
+        cv2.normalize(hist, hist)
+        return hist
+
     def process_frame(self, frame):
         """Processes a frame to track player and calculate knee flexion."""
         # Run YOLOv10 tracking on the selected device
@@ -57,9 +92,59 @@ class PlayerTracker:
         boxes = results[0].boxes.xyxy.cpu().numpy()
         ids = results[0].boxes.id.int().cpu().numpy()
 
+        # --- Re-ID logic: if target was lost for enough frames, find nearest re-appearing track ---
+        # We only attempt re-ID after _MIN_MISSING_FRAMES consecutive absences to avoid reacting to
+        # normal 1-frame ByteTrack jitter. Real occlusion events last many more frames.
+        _MIN_MISSING_FRAMES = 5
+        if self.target_player_id is not None:
+            target_found = any(tid == self.target_player_id for tid in ids)
+            if not target_found:
+                self._frames_missing += 1
+                if self._frames_missing >= _MIN_MISSING_FRAMES and self._last_known_center is not None:
+                    # Find the best candidate: must pass bbox-height, distance, and colour gates
+                    best_dist = float('inf')
+                    best_id = None
+                    for box, tid in zip(boxes, ids):
+                        # Gate 1: bbox height similarity (rejects people at very different scales)
+                        h = box[3] - box[1]
+                        if self._last_known_bbox_height is not None:
+                            height_ratio = h / self._last_known_bbox_height
+                            if not (1 - self._reacquire_height_tol <= height_ratio <= 1 + self._reacquire_height_tol):
+                                continue
+                        # Gate 2: colour similarity (rejects people with different jersey colours)
+                        if self._target_hue_hist is not None:
+                            candidate_hist = self._torso_hue_hist(frame, box)
+                            if candidate_hist is not None:
+                                corr = cv2.compareHist(self._target_hue_hist, candidate_hist, cv2.HISTCMP_CORREL)
+                                if corr < self._reacquire_colour_thresh:
+                                    continue
+                        # Gate 3: proximity
+                        cx = (box[0] + box[2]) / 2
+                        cy = (box[1] + box[3]) / 2
+                        dist = ((cx - self._last_known_center[0]) ** 2 + (cy - self._last_known_center[1]) ** 2) ** 0.5
+                        if dist < best_dist:
+                            best_dist = dist
+                            best_id = tid
+                    if best_id is not None and best_dist <= self._reacquire_threshold_px:
+                        print(f"[Tracker] Re-acquired target: old ID={self.target_player_id} → new ID={int(best_id)} (dist={best_dist:.0f}px, missing={self._frames_missing}f)")
+                        self.target_player_id = int(best_id)
+                        self._frames_missing = 0
+            else:
+                self._frames_missing = 0
+
         for box, track_id in zip(boxes, ids):
             if self.target_player_id is not None and track_id != self.target_player_id:
                 continue
+
+            # Update last known center and bbox height for re-ID continuity
+            cx = (box[0] + box[2]) / 2
+            cy = (box[1] + box[3]) / 2
+            self._last_known_center = (cx, cy)
+            self._last_known_bbox_height = box[3] - box[1]
+
+            # Capture colour signature on the first confirmed detection of the target
+            if self._target_hue_hist is None:
+                self._target_hue_hist = self._torso_hue_hist(frame, box)
 
             # Extract bounding box
             x1, y1, x2, y2 = map(int, box)

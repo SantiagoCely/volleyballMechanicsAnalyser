@@ -105,6 +105,7 @@ def main():
     parser.add_argument("--output", type=str, default=None,
         help="Save results JSON to a custom path. Default: output/<video_stem>_analysis.json")
     parser.add_argument("--show", action="store_true", help="Display the video with overlays")
+    parser.add_argument("--debug", action="store_true", help="Print per-frame tracking and jump-detection diagnostics")
 
     args = parser.parse_args()
 
@@ -148,6 +149,19 @@ def main():
         if not ret: break
             
         player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = tracker.process_frame(frame)
+
+        if args.debug:
+            baseline = analyzer.baseline_hip_height
+            thresh_start = f"{baseline * 0.93:.1f}" if baseline else "n/a"
+            thresh_land  = f"{baseline * 0.97:.1f}" if baseline else "n/a"
+            baseline_str = f"{baseline:.1f}" if baseline else "n/a"
+            hip_str = f"{hip_y:.1f}" if hip_y is not None else "none"
+            print(
+                f"[t={frame_time:.2f}s] pid={player_id} hip_y={hip_str} "
+                f"baseline={baseline_str} jump_thresh<{thresh_start} land_thresh>={thresh_land} "
+                f"is_jumping={analyzer.is_jumping} jumps={analyzer.jump_count}"
+            )
+
         if player_id is not None:
             # Only pass court coordinates when calibrator exists — pixel coords are meaningless for cm metrics
             court_pos = calibrator.transform_point(ground_pos) if calibrator else None

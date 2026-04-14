@@ -1,7 +1,7 @@
 """
 End-to-end tests for the Volleyball Mechanics Analyser.
 
-Three layers of coverage:
+Four layers of coverage:
   Layer 1 — Analyzer fixture tests: feed a known frame sequence through
              JumpAnalyzer and assert on event structure + exact metric values.
              Fast (~0.04 s), no GPU needed.
@@ -15,16 +15,26 @@ Three layers of coverage:
              end-to-end and assert the saved JSON is correct.
              Medium speed (~1 s), no GPU needed.
 
+  Layer 4 — Video regression tests: run the FULL pipeline (YOLO + MediaPipe +
+             analyser) on real video files and compare the output JSON against
+             golden fixture files using per-field tolerances.
+             Slow (~15–30 s per video); tagged @pytest.mark.slow.
+             Golden files live in tests/fixtures/*_video_golden.json.
+             When a metric is added or removed, update the golden files by
+             running:
+               python main.py --video <video> --player_id 1 --output tests/fixtures/<name>_video_golden.json
+
 Running all layers:
     python -m pytest tests/test_e2e.py -v
 
-Skipping the slow tracker smoke test:
+Skipping slow tests:
     python -m pytest tests/test_e2e.py -v -m "not slow"
 """
 
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -470,6 +480,176 @@ class TestPipelineIntegration(unittest.TestCase):
                 self._run_pipeline_loop(video_path, output_path)
             except Exception as e:
                 self.fail(f"Pipeline raised an exception without calibrator: {e}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LAYER 4 — Video regression tests  (marked slow — runs full YOLO + MediaPipe)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Per-field float tolerances for the golden-file comparison.
+# Keyed by the JSON field name (last segment of the dotted path).
+# Inference variability (GPU fp ordering, ByteTrack jitter) drives these values:
+# they are wide enough to survive across runs, tight enough to catch real bugs.
+#
+# To add a tolerance for a new metric, add it here.
+_VIDEO_FLOAT_TOLERANCES = {
+    # ── Time fields ────────────────────────────────────────────────────────
+    "air_time_sec":                    0.15,
+    "start_video_time_sec":            0.20,
+    "end_video_time_sec":              0.20,
+    "crouch_duration_sec":             0.20,
+    "landing_absorption_duration_sec": 0.15,
+    "air_time_variability_sec":        0.05,
+    # ── Height / distance fields ───────────────────────────────────────────
+    "jump_height_est_cm":              3.0,
+    "jump_height_est_inch":            1.5,
+    "jump_height_variability_cm":      2.0,
+    # ── Angle fields ──────────────────────────────────────────────────────
+    "crouch_depth_deg":                15.0,
+    "left":                            10.0,   # knee_angles.left
+    "right":                           10.0,   # knee_angles.right
+    "knee_symmetry_deg":               10.0,
+    "min_landing_knee_angle_deg":      15.0,
+    "landing_knee_flexion_rate_degs":  60.0,
+    "takeoff_angle_deg":               10.0,
+    "trunk_lean_deg":                  10.0,
+    # ── Pixel / ratio fields ───────────────────────────────────────────────
+    "peak_wrist_height_ratio":         0.30,
+    "arm_swing_symmetry_px":           25.0,
+}
+_VIDEO_FLOAT_TOLERANCE_DEFAULT = 5.0
+
+
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _run_pipeline_on_video(video_filename, player_id, output_path):
+    """Invoke main.py as a subprocess so the full stack is exercised."""
+    video_path = os.path.join(_PROJECT_ROOT, video_filename)
+    result = subprocess.run(
+        [sys.executable, "main.py",
+         "--video", video_path,
+         "--player_id", str(player_id),
+         "--output", output_path],
+        capture_output=True,
+        text=True,
+        cwd=_PROJECT_ROOT,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"main.py exited with code {result.returncode}:\n{result.stderr}"
+        )
+
+
+class _VideoRegressionBase:
+    """Shared comparison logic for Layer 4 video regression tests.
+
+    Subclasses set GOLDEN_PATH, VIDEO_FILENAME, and PLAYER_ID.
+    The golden JSON file is the source of truth for both schema and values.
+
+    When a metric is added:
+      1. Re-run main.py on the video to produce updated output.
+      2. Copy the output to the golden fixture path.
+      3. Add the new field's tolerance to _VIDEO_FLOAT_TOLERANCES above.
+
+    When a metric is removed:
+      1. Remove it from the golden fixture file.
+      2. Remove its entry from _VIDEO_FLOAT_TOLERANCES.
+    """
+
+    GOLDEN_PATH: str = ""
+    VIDEO_FILENAME: str = ""
+    PLAYER_ID: int = 1
+
+    @classmethod
+    def setUpClass(cls):
+        with open(cls.GOLDEN_PATH) as f:
+            cls._golden = json.load(f)
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = os.path.join(tmp, "actual.json")
+            _run_pipeline_on_video(cls.VIDEO_FILENAME, cls.PLAYER_ID, output_path)
+            with open(output_path) as f:
+                cls._actual = json.load(f)
+
+    def _assert_matches_golden(self, actual, golden, path="root"):
+        """Recursively compare actual vs golden with per-field float tolerances.
+
+        Fails with a clear message when:
+          - A key is present in actual but missing from golden (new metric, update golden)
+          - A key is present in golden but missing from actual (metric removed)
+          - A float value is outside the allowed tolerance band
+          - A non-float value doesn't match exactly
+        """
+        if isinstance(golden, dict):
+            self.assertEqual(
+                set(actual.keys()), set(golden.keys()),
+                msg=(
+                    f"Schema mismatch at '{path}'.\n"
+                    f"  Keys in actual but not golden (new metric — update golden): "
+                    f"{set(actual.keys()) - set(golden.keys())}\n"
+                    f"  Keys in golden but not actual (metric removed): "
+                    f"{set(golden.keys()) - set(actual.keys())}"
+                ),
+            )
+            for key in golden:
+                if key == "player_id":
+                    # ByteTrack IDs are non-deterministic; only verify type.
+                    self.assertIsInstance(
+                        actual[key], int,
+                        msg=f"player_id at '{path}.{key}' must be int, got {type(actual[key])}"
+                    )
+                    continue
+                self._assert_matches_golden(actual[key], golden[key], f"{path}.{key}")
+
+        elif isinstance(golden, list):
+            self.assertEqual(
+                len(actual), len(golden),
+                msg=f"List length mismatch at '{path}': expected {len(golden)}, got {len(actual)}",
+            )
+            for i, (a, g) in enumerate(zip(actual, golden)):
+                self._assert_matches_golden(a, g, f"{path}[{i}]")
+
+        elif golden is None:
+            self.assertIsNone(
+                actual,
+                msg=f"Expected None at '{path}', got {actual!r}",
+            )
+
+        elif isinstance(golden, float):
+            field = path.rsplit(".", 1)[-1]
+            tol = _VIDEO_FLOAT_TOLERANCES.get(field, _VIDEO_FLOAT_TOLERANCE_DEFAULT)
+            self.assertAlmostEqual(
+                actual, golden, delta=tol,
+                msg=f"At '{path}': expected {golden} ± {tol}, got {actual}",
+            )
+
+        else:
+            # int, str, bool — exact match
+            self.assertEqual(
+                actual, golden,
+                msg=f"At '{path}': expected {golden!r}, got {actual!r}",
+            )
+
+    def test_full_output_matches_golden(self):
+        self._assert_matches_golden(self._actual, self._golden)
+
+
+@pytest.mark.slow
+class TestVideoRegressionSingleJump(_VideoRegressionBase, unittest.TestCase):
+    """Layer 4: full pipeline on single_jump.mov vs golden fixture."""
+
+    GOLDEN_PATH    = os.path.join(FIXTURES_DIR, "single_jump_video_golden.json")
+    VIDEO_FILENAME = "single_jump.mov"
+    PLAYER_ID      = 1
+
+
+@pytest.mark.slow
+class TestVideoRegressionMultipleJumps(_VideoRegressionBase, unittest.TestCase):
+    """Layer 4: full pipeline on multiple_jumps.mov vs golden fixture."""
+
+    GOLDEN_PATH    = os.path.join(FIXTURES_DIR, "multiple_jumps_video_golden.json")
+    VIDEO_FILENAME = "multiple_jumps.mov"
+    PLAYER_ID      = 1
 
 
 if __name__ == "__main__":

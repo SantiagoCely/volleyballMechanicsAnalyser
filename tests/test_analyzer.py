@@ -399,14 +399,14 @@ class TestSessionSummary(unittest.TestCase):
             summary = data[0]
             self.assertEqual(summary['event'], 'SESSION_SUMMARY')
             self.assertEqual(summary['jump_count'], 1)
-            self.assertIsNone(summary['jump_height_consistency_cm'])
-            self.assertIsNone(summary['air_time_consistency_sec'])
+            self.assertIsNone(summary['jump_height_variability_cm'])
+            self.assertIsNone(summary['air_time_variability_sec'])
             self.assertEqual(summary['video'], 'test_video.mov')
         finally:
             os.unlink(path)
 
-    def test_two_jumps_consistency_computed(self):
-        """With two jumps of different heights, consistency should be stdev > 0."""
+    def test_two_jumps_variability_computed(self):
+        """With two jumps of different heights, variability should be stdev > 0."""
         import tempfile, json, os
 
         # Jump 1: baseline=400, peak=300 → height = (100/400)*100 = 25 cm
@@ -428,9 +428,9 @@ class TestSessionSummary(unittest.TestCase):
             summary = data[0]
             self.assertEqual(summary['event'], 'SESSION_SUMMARY')
             self.assertEqual(summary['jump_count'], 2)
-            self.assertIsNotNone(summary['jump_height_consistency_cm'])
-            self.assertGreater(summary['jump_height_consistency_cm'], 0)
-            self.assertIsNotNone(summary['air_time_consistency_sec'])
+            self.assertIsNotNone(summary['jump_height_variability_cm'])
+            self.assertGreater(summary['jump_height_variability_cm'], 0)
+            self.assertIsNotNone(summary['air_time_variability_sec'])
             self.assertEqual(summary['video'], 'test_video.mov')
         finally:
             os.unlink(path)

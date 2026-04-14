@@ -18,8 +18,8 @@
         },
         "metrics": {
             "air_time_sec": 0.4,
-            "jump_height_est_cm": 35.0,
-            "jump_height_est_inch": 13.8,
+            "jump_height_est_cm": 34.9,
+            "jump_height_est_inch": 13.7,
             "takeoff_angle_deg": 27.7,
             "knee_angles": {"left": 145.0, "right": 148.0},
             "knee_symmetry_deg": 3.0,

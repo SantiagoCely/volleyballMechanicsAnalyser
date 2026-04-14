@@ -246,6 +246,11 @@ class JumpAnalyzer:
             self.baseline_hip_height = current_hip_y
             return
 
+        # Slowly adapt baseline to camera/position drift while the player is grounded and near standing height.
+        # Only update when hip_y is within ±15% of the current baseline (excludes deep crouches and jumps).
+        if not self.is_jumping and abs(current_hip_y - self.baseline_hip_height) / self.baseline_hip_height < 0.15:
+            self.baseline_hip_height = 0.98 * self.baseline_hip_height + 0.02 * current_hip_y
+
         # Collect post-landing absorption frames (only while grounded — not during flight of next jump)
         if self.post_landing_active and not self.is_jumping:
             self.post_landing_knee.append((frame_time, knee_angles[0], knee_angles[1]))
@@ -413,8 +418,8 @@ class JumpAnalyzer:
             "event": "SESSION_SUMMARY",
             "video": video_name,
             "jump_count": self.jump_count,
-            "jump_height_consistency_cm": height_consistency,
-            "air_time_consistency_sec": air_time_consistency,
+            "jump_height_variability_cm": height_consistency,
+            "air_time_variability_sec": air_time_consistency,
         }
         output = [session_summary] + self.history
 

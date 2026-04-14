@@ -1,0 +1,69 @@
+[
+    {
+        "event": "SESSION_SUMMARY",
+        "video": "multiple_jumps.mov",
+        "jump_count": 2,
+        "jump_height_variability_cm": 0.8,
+        "air_time_variability_sec": 0.012
+    },
+    {
+        "event": "JUMP",
+        "jump_num": 1,
+        "player_id": 1,
+        "start_video_time_sec": 2.688,
+        "end_video_time_sec": 3.376,
+        "status": "STIFF",
+        "takeoff": {
+            "pos": null,
+            "crouch_depth_deg": 87.3,
+            "crouch_duration_sec": 0.924,
+            "trunk_lean_deg": null
+        },
+        "metrics": {
+            "air_time_sec": 0.689,
+            "jump_height_est_cm": 23.2,
+            "jump_height_est_inch": 9.1,
+            "takeoff_angle_deg": null,
+            "knee_angles": {
+                "left": 168.1,
+                "right": 163.0
+            },
+            "knee_symmetry_deg": 5.0,
+            "min_landing_knee_angle_deg": 83.6,
+            "landing_absorption_duration_sec": 0.302,
+            "landing_knee_flexion_rate_degs": 271.1,
+            "peak_wrist_height_ratio": 0.119,
+            "arm_swing_symmetry_px": 11.2
+        }
+    },
+    {
+        "event": "JUMP",
+        "jump_num": 2,
+        "player_id": 235,
+        "start_video_time_sec": 15.957,
+        "end_video_time_sec": 16.663,
+        "status": "STIFF",
+        "takeoff": {
+            "pos": null,
+            "crouch_depth_deg": 80.9,
+            "crouch_duration_sec": 0.941,
+            "trunk_lean_deg": null
+        },
+        "metrics": {
+            "air_time_sec": 0.705,
+            "jump_height_est_cm": 22.0,
+            "jump_height_est_inch": 8.7,
+            "takeoff_angle_deg": null,
+            "knee_angles": {
+                "left": 169.6,
+                "right": 153.1
+            },
+            "knee_symmetry_deg": 16.6,
+            "min_landing_knee_angle_deg": 98.4,
+            "landing_absorption_duration_sec": 0.218,
+            "landing_knee_flexion_rate_degs": 288.4,
+            "peak_wrist_height_ratio": 0.802,
+            "arm_swing_symmetry_px": 7.0
+        }
+    }
+]
