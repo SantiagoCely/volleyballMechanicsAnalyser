@@ -8,7 +8,7 @@ import numpy as np
 _GRAVITY_CM_S2 = 981.0
 
 class JumpAnalyzer:
-    _CROUCH_THRESHOLD_DEG = 150.0
+    _CROUCH_THRESHOLD_DEG = 1500.0
 
     def __init__(self, stiff_landing_threshold=160, approach_window_sec=0.5):
         self.stiff_landing_threshold = stiff_landing_threshold
