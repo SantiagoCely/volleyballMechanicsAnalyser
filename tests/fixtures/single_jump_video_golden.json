@@ -1,0 +1,39 @@
+[
+    {
+        "event": "SESSION_SUMMARY",
+        "video": "single_jump.mov",
+        "jump_count": 1,
+        "jump_height_variability_cm": null,
+        "air_time_variability_sec": null
+    },
+    {
+        "event": "JUMP",
+        "jump_num": 1,
+        "player_id": 1,
+        "start_video_time_sec": 2.384,
+        "end_video_time_sec": 3.028,
+        "status": "STIFF",
+        "takeoff": {
+            "pos": null,
+            "crouch_depth_deg": 137.0,
+            "crouch_duration_sec": 0.644,
+            "trunk_lean_deg": null
+        },
+        "metrics": {
+            "air_time_sec": 0.644,
+            "jump_height_est_cm": 21.1,
+            "jump_height_est_inch": 8.3,
+            "takeoff_angle_deg": null,
+            "knee_angles": {
+                "left": 169.8,
+                "right": 163.0
+            },
+            "knee_symmetry_deg": 6.8,
+            "min_landing_knee_angle_deg": 112.1,
+            "landing_absorption_duration_sec": 0.278,
+            "landing_knee_flexion_rate_degs": 195.0,
+            "peak_wrist_height_ratio": 1.626,
+            "arm_swing_symmetry_px": 30.0
+        }
+    }
+]
