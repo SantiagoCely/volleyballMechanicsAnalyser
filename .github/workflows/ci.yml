@@ -1,11 +1,13 @@
 name: CI
 
-# Run on every push to any branch (early feedback), on every PR targeting main,
-# and on merge_group events so the workflow acts as a merge queue gate.
+# Three distinct events — each fires exactly once, never overlapping:
+#   pull_request  → runs on every PR update (the gate before merging)
+#   push (main)   → runs after a merge lands on main (post-merge verification)
+#   merge_group   → runs inside the merge queue before a batch is committed
 on:
-  push:
-    branches: ["**"]
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
   merge_group:
 
