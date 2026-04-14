@@ -481,6 +481,85 @@ class TestPipelineIntegration(unittest.TestCase):
             except Exception as e:
                 self.fail(f"Pipeline raised an exception without calibrator: {e}")
 
+    def test_with_calibrator_populates_position_metrics(self):
+        """When a CameraCalibrator is active, position-based metrics
+        (drift_cm, approach_velocity_cms, stance_width_cm) must be present
+        and non-null in the JUMP output.  Without --calibrate they are absent
+        because pixel coords are meaningless as cm distances."""
+        from camera_calib import CameraCalibrator
+        from tracker import PlayerTracker
+
+        frames = _load_fixture()
+        side_effects = _build_mock_side_effect(frames)
+
+        # A passthrough mock calibrator: court_coord == pixel_coord.
+        # The actual values don't matter — we only assert presence / non-null.
+        mock_calibrator = MagicMock(spec=CameraCalibrator)
+        mock_calibrator.transform_point.side_effect = lambda p: (float(p[0]), float(p[1]))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            video_path = os.path.join(tmp_dir, "test.avi")
+            output_path = os.path.join(tmp_dir, "output", "results.json")
+            _make_synthetic_video(video_path)
+
+            with patch.object(PlayerTracker, "process_frame", side_effect=side_effects):
+                tracker = PlayerTracker.__new__(PlayerTracker)
+                tracker.target_player_id = None
+                analyzer = JumpAnalyzer()
+
+                cap = cv2.VideoCapture(video_path)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+
+                while cap.isOpened():
+                    frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+                    frame_time = frame_idx / fps
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    result = tracker.process_frame(frame)
+                    if result is None or len(result) != 6:
+                        continue
+                    player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = result
+                    if player_id is None:
+                        continue
+
+                    # Apply calibrator — mirrors main.py's --calibrate path
+                    court_pos = mock_calibrator.transform_point(ground_pos)
+                    foot_court_pos = None
+                    if foot_pixels is not None:
+                        l_foot, r_foot = foot_pixels
+                        foot_court_pos = (
+                            mock_calibrator.transform_point(l_foot),
+                            mock_calibrator.transform_point(r_foot),
+                        )
+                    analyzer.analyze_frame(player_id, knee_angles, hip_y,
+                                           court_pos, frame_time, foot_court_pos, upper_body)
+
+                cap.release()
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                analyzer.save_logs(output_path)
+
+            with open(output_path) as f:
+                data = json.load(f)
+
+        jump = next(e for e in data if e["event"] == "JUMP")
+
+        # All three position-based metrics must be present and populated
+        self.assertIn("drift_cm", jump["metrics"],
+                      "drift_cm must appear in metrics when calibrator is active")
+        self.assertIsNotNone(jump["metrics"]["drift_cm"],
+                             "drift_cm must be non-null when calibrator is active")
+
+        self.assertIn("approach_velocity_cms", jump["takeoff"],
+                      "approach_velocity_cms must appear in takeoff when calibrator is active")
+        self.assertIsNotNone(jump["takeoff"]["approach_velocity_cms"],
+                             "approach_velocity_cms must be non-null when calibrator is active")
+
+        self.assertIn("stance_width_cm", jump["takeoff"],
+                      "stance_width_cm must appear in takeoff when calibrator is active")
+        self.assertIsNotNone(jump["takeoff"]["stance_width_cm"],
+                             "stance_width_cm must be non-null when calibrator is active")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # LAYER 4 — Video regression tests  (marked slow — runs full YOLO + MediaPipe)

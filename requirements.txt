@@ -5,3 +5,4 @@ mediapipe
 pandas
 scipy
 scikit-learn
+ultralytics
