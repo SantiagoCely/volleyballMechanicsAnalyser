@@ -436,5 +436,30 @@ class TestSessionSummary(unittest.TestCase):
             os.unlink(path)
 
 
+class TestMidJumpVideoEnd(unittest.TestCase):
+    """Document the known behaviour when a video ends while a jump is in flight.
+
+    jump_count increments at takeoff, but the JUMP entry is only appended to
+    history on landing. If the video ends before landing, the in-progress jump
+    is silently dropped: jump_count and len(history) diverge.
+
+    This test exists to make the behaviour explicit so it is not accidentally
+    'fixed' in a way that emits a corrupt or partial JUMP entry.
+    """
+
+    def test_in_progress_jump_not_recorded_when_video_ends(self):
+        analyzer = JumpAnalyzer()
+        analyzer.analyze_frame(1, (170, 175), 400, frame_time=0.0)  # sets baseline
+        analyzer.analyze_frame(1, (170, 175), 350, frame_time=0.1)  # hip rises → jump starts
+        # Video ends here — no landing frame delivered
+
+        self.assertTrue(analyzer.is_jumping,
+                        "Analyzer should still be in jump state at end of video")
+        self.assertEqual(analyzer.jump_count, 1,
+                         "jump_count increments at takeoff")
+        self.assertEqual(len(analyzer.history), 0,
+                         "No JUMP entry is written until landing is detected")
+
+
 if __name__ == '__main__':
     unittest.main()
