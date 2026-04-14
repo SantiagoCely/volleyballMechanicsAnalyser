@@ -1,0 +1,119 @@
+name: CI
+
+# Run on every push to any branch (early feedback), on every PR targeting main,
+# and on merge_group events so the workflow acts as a merge queue gate.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  merge_group:
+
+jobs:
+  # ── Job 1: Fast test suite ────────────────────────────────────────────────
+  # This is the blocking gate. A failing test prevents the merge.
+  # Slow tests (@pytest.mark.slow) are excluded — they require a GPU and real
+  # video files that are not available in CI. Run them locally before opening a PR.
+  test:
+    name: Tests (fast suite)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      # libGL is required by OpenCV and MediaPipe on headless Ubuntu runners.
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1
+
+      # Install the CPU-only PyTorch wheel first so that ultralytics (installed
+      # via requirements.txt) does not pull in the much larger CUDA build.
+      - name: Install PyTorch (CPU)
+        run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install test runner
+        run: pip install pytest
+
+      - name: Run fast test suite
+        run: python -m pytest tests/ -v -m "not slow" --tb=short
+
+  # ── Job 2: Linting ────────────────────────────────────────────────────────
+  # Two-pass flake8:
+  #   Pass 1 (hard gate)  — syntax errors and undefined names only.
+  #                          These indicate real bugs, not style differences.
+  #   Pass 2 (informational) — full style check; visible in logs but never
+  #                          blocks a merge so style can be improved gradually.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install flake8
+        run: pip install flake8
+
+      # Hard gate: E9=runtime errors, F63/F7=syntax, F82=undefined names.
+      - name: flake8 — syntax errors (blocking)
+        run: |
+          flake8 . \
+            --exclude=.venv,__pycache__ \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics
+
+      # Informational: full style check. --exit-zero means CI stays green even
+      # when style warnings exist, so they can be addressed incrementally.
+      - name: flake8 — style (informational)
+        run: |
+          flake8 . \
+            --exclude=.venv,__pycache__ \
+            --max-line-length=127 \
+            --max-complexity=12 \
+            --extend-ignore=E203,W503 \
+            --statistics \
+            --exit-zero
+
+  # ── Job 3: Type-checking ──────────────────────────────────────────────────
+  # mypy runs in informational mode (--exit-zero) because the codebase
+  # currently has no type annotations. This job surfaces type errors in CI
+  # logs without blocking merges. Harden it incrementally as annotations
+  # are added to each module.
+  typecheck:
+    name: Type-check (informational)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install mypy
+        run: pip install mypy
+
+      - name: mypy (informational — does not block merges)
+        run: |
+          mypy . \
+            --ignore-missing-imports \
+            --exclude .venv \
+            --no-error-summary \
+            --exit-code 0 \
+            || true
