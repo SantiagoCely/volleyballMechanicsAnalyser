@@ -193,3 +193,73 @@ These fields are computed from a 300 ms window after landing and are initially `
 | `landing_knee_flexion_rate_degs` | float \| null | Rate of knee bend after landing (°/s). Higher = faster shock absorption |
 
 ---
+
+## Project Structure
+
+```
+volleyballMechanicsAnalyser/
+├── main.py                        # Entry point: CLI, calibration UI, player selection, video loop
+├── analyzer.py                    # JumpAnalyzer — jump detection state machine and metric computation
+├── tracker.py                     # PlayerTracker — YOLO detection, ByteTrack, MediaPipe pose
+├── camera_calib.py                # CameraCalibrator — perspective transform (pixel → cm)
+├── utils.py                       # Geometry and signal-processing helpers
+├── requirements.txt               # Python dependencies
+├── pytest.ini                     # Test configuration (slow marker definition)
+├── tests/
+│   ├── test_analyzer.py           # Unit tests for JumpAnalyzer
+│   ├── test_tracker.py            # Smoke tests for PlayerTracker
+│   ├── test_utils.py              # Unit tests for geometry helpers
+│   ├── test_camera_calib.py       # Unit tests for perspective transform accuracy
+│   ├── test_e2e.py                # End-to-end tests (3 layers, see Testing section)
+│   └── fixtures/
+│       ├── single_jump_sequence.json   # Deterministic 11-frame input fixture
+│       └── expected_output.json        # Pinned expected metric values
+├── output/                        # Default location for analysis_results JSON files
+└── docs/
+    └── superpowers/
+        ├── specs/                 # Design specs
+        └── plans/                 # Implementation plans
+```
+
+---
+
+## Architecture Overview
+
+The pipeline has four modules with clear single responsibilities:
+
+**`main.py`** owns the CLI and orchestration. It handles the two optional UI interactions (court calibration clicks, player selection click), then runs the frame-by-frame video loop — passing each frame to the tracker, transforming coordinates if a calibrator is present, and forwarding results to the analyzer.
+
+**`tracker.py` (`PlayerTracker`)** handles all computer vision. Each call to `process_frame(frame)` runs YOLOv10 detection, selects the target player via ByteTrack ID (with colour-histogram re-ID fallback), crops the bounding box, runs MediaPipe Pose on the crop, and returns a 6-tuple: `(player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body)`. Any element is `None` if detection fails.
+
+**`analyzer.py` (`JumpAnalyzer`)** owns all biomechanics logic. It is a pure state machine with no video or image dependencies — it only consumes the 6-tuple values plus optional court coordinates. It detects jumps, computes all metrics, and accumulates a history list that becomes the output JSON.
+
+**`camera_calib.py` (`CameraCalibrator`)** is an optional coordinate transformer. When `--calibrate` is used, it holds a perspective-transform matrix and converts any pixel `(x, y)` to court centimetres via `transform_point()`.
+
+**`utils.py`** contains standalone geometry helpers (`calculate_angle`, `calculate_distance`, `smooth_trajectory`, etc.). These are not imported by the main pipeline — they are available as utilities for exploratory use.
+
+### Data flow
+
+```
+Video file
+    │
+    ▼
+PlayerTracker.process_frame(frame)
+    │  returns: (player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body)
+    │
+    ├─► [if --calibrate] CameraCalibrator.transform_point(ground_pos)
+    │       returns: court_pos (cm)
+    │
+    ▼
+JumpAnalyzer.analyze_frame(player_id, knee_angles, hip_y, court_pos, frame_time,
+                            foot_court_pos, upper_body)
+    │  updates internal state; emits JUMP entries to history on landing
+    │
+    ▼
+JumpAnalyzer.save_logs(output_path)
+    │
+    ▼
+output/<video_stem>_analysis.json
+    [SESSION_SUMMARY, JUMP, JUMP, ...]
+```
+
+---
