@@ -75,7 +75,12 @@ Results are saved as a JSON array. The first element is always a `SESSION_SUMMAR
   "video": "single_jump.mov",
   "jump_count": 2,
   "jump_height_variability_cm": 1.4,
-  "air_time_variability_sec": 0.012
+  "air_time_variability_sec": 0.012,
+  "avg_jump_score": 76.5,
+  "best_jump_num": 2,
+  "best_jump_score": 82.0,
+  "worst_jump_num": 1,
+  "worst_jump_score": 71.0
 }
 ```
 
@@ -84,6 +89,36 @@ Results are saved as a JSON array. The first element is always a `SESSION_SUMMAR
 | `jump_count` | int | Total jumps detected in the video |
 | `jump_height_variability_cm` | float \| null | Standard deviation of estimated jump heights across all jumps. `null` if fewer than 2 jumps |
 | `air_time_variability_sec` | float \| null | Standard deviation of air times. `null` if fewer than 2 jumps |
+| `avg_jump_score` | float \| null | Mean composite jump score (see [Jump scoring](#jump-scoring)) across completed jumps. `null` if there are no scored jumps |
+| `best_jump_num` | int \| null | `jump_num` of the highest-scoring jump. `null` if there are no scored jumps |
+| `best_jump_score` | float \| null | Highest composite score in the session |
+| `worst_jump_num` | int \| null | `jump_num` of the lowest-scoring jump |
+| `worst_jump_score` | float \| null | Lowest composite score in the session |
+
+---
+
+### Jump scoring
+
+Each completed `JUMP` includes a composite **score** (0–100, percentage-style) and a **score_breakdown** of channel sub-scores (each 0–100 before weighting). Implementation lives in `jump_scoring.py`; formulas belong there — this section documents the coaching contract.
+
+**Channels and default weights** (weights are **renormalized** over channels that have data — e.g. without `--calibrate`, drift / approach / stance-driven form are skipped):
+
+| Channel | Inputs | Interpretation |
+|--------|--------|------------------|
+| `landing_quality` | `knee_angles.left`, `knee_angles.right` at contact | Target soft landing band **130°–155°** per knee; stiffer (higher) angles lose points faster |
+| `jump_quality` | `jump_height_est_cm` | Sub-score for vertical hip displacement: higher estimated height scores better; linear map from **8 cm** (0 pts) to **45 cm** (100 pts). Named `jump_quality` to avoid confusion with `jump_height_est_cm` |
+| `drift_stability` | `drift_cm.magnitude` | Only with calibration; **0 cm drift = 100**, score falls to **0** at **40 cm** magnitude |
+| `approach_control` | `takeoff.approach_velocity_cms` | Only with calibration; full points on **350–620 cm/s**, tapering to **0** toward **150** and **800 cm/s** |
+| `takeoff_form` | `takeoff.stance_width_cm`, `metrics.takeoff_angle_deg` | Average of available parts: stance near **18–38 cm** and angle near **12°–40°** score highest |
+
+**Base weights before renormalization:** landing 0.25, jump-quality (height-based) 0.25, drift 0.20, approach 0.15, takeoff form 0.15.
+
+#### `metrics` fields — Jump scoring
+
+| Field | Type | Description |
+|--------|------|-------------|
+| `score` | int | Composite jump quality **0–100** |
+| `score_breakdown` | object | Per-channel sub-scores (0–100); keys present only for channels that had inputs |
 
 ---
 
@@ -122,7 +157,15 @@ Results are saved as a JSON array. The first element is always a `SESSION_SUMMAR
       "side_to_side": 4.4,
       "magnitude": 215.4
     },
-    "com_flight_drift_cm": 15.1
+    "com_flight_drift_cm": 15.1,
+    "score": 78,
+    "score_breakdown": {
+      "landing_quality": 95.0,
+      "jump_quality": 62.0,
+      "drift_stability": 88.0,
+      "approach_control": 100.0,
+      "takeoff_form": 92.0
+    }
   },
   "landing_pos": [275.2, 1201.5]
 }
@@ -200,6 +243,7 @@ These fields are computed from a 300 ms window after landing and are initially `
 volleyballMechanicsAnalyser/
 ├── main.py                        # Entry point: CLI, calibration UI, player selection, video loop
 ├── analyzer.py                    # JumpAnalyzer — jump detection state machine and metric computation
+├── jump_scoring.py                # Composite jump score (0–100), breakdown, session rollups
 ├── tracker.py                     # PlayerTracker — YOLO detection, ByteTrack, MediaPipe pose
 ├── camera_calib.py                # CameraCalibrator — perspective transform (pixel → cm)
 ├── utils.py                       # Geometry and signal-processing helpers

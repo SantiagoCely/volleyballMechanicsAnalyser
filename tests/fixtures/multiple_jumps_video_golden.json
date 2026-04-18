@@ -4,7 +4,12 @@
         "video": "multiple_jumps.mov",
         "jump_count": 2,
         "jump_height_variability_cm": 0.8,
-        "air_time_variability_sec": 0.012
+        "air_time_variability_sec": 0.012,
+        "avg_jump_score": 47.5,
+        "best_jump_num": 2,
+        "best_jump_score": 51.0,
+        "worst_jump_num": 1,
+        "worst_jump_score": 44.0
     },
     {
         "event": "JUMP",
@@ -33,7 +38,12 @@
             "landing_absorption_duration_sec": 0.302,
             "landing_knee_flexion_rate_degs": 271.1,
             "peak_wrist_height_ratio": 0.119,
-            "arm_swing_symmetry_px": 11.2
+            "arm_swing_symmetry_px": 11.2,
+            "score": 44,
+            "score_breakdown": {
+                "landing_quality": 47.3,
+                "jump_quality": 41.1
+            }
         }
     },
     {
@@ -63,7 +73,12 @@
             "landing_absorption_duration_sec": 0.218,
             "landing_knee_flexion_rate_degs": 288.4,
             "peak_wrist_height_ratio": 0.802,
-            "arm_swing_symmetry_px": 7.0
+            "arm_swing_symmetry_px": 7.0,
+            "score": 51,
+            "score_breakdown": {
+                "landing_quality": 63.5,
+                "jump_quality": 37.8
+            }
         }
     }
 ]

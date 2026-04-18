@@ -33,7 +33,15 @@
                 "side_to_side": 5,
                 "magnitude": 7.1
             },
-            "com_flight_drift_cm": 0.0
+            "com_flight_drift_cm": 0.0,
+            "score": 90,
+            "score_breakdown": {
+                "landing_quality": 100.0,
+                "jump_quality": 72.7,
+                "drift_stability": 82.2,
+                "approach_control": 100.0,
+                "takeoff_form": 100.0
+            }
         },
         "landing_pos": [305, 5]
     }

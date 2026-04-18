@@ -121,7 +121,7 @@ class TestE2EPipelineStructure(unittest.TestCase):
         metrics = self.events[0]["metrics"]
         for key in ("air_time_sec", "jump_height_est_cm", "jump_height_est_inch",
                     "knee_angles", "knee_symmetry_deg", "drift_cm", "takeoff_angle_deg",
-                    "com_flight_drift_cm"):
+                    "com_flight_drift_cm", "score", "score_breakdown"):
             self.assertIn(key, metrics, msg=f"metrics missing key: {key}")
 
     def test_drift_cm_has_all_components(self):
@@ -234,6 +234,21 @@ class TestE2EMetricRegression(unittest.TestCase):
             self.expected["jump"]["metrics"]["com_flight_drift_cm"],
             delta=0.1,
         )
+
+    def test_jump_score(self):
+        self.assertEqual(
+            self.metrics["score"],
+            self.expected["jump"]["metrics"]["score"],
+        )
+
+    def test_score_breakdown(self):
+        exp = self.expected["jump"]["metrics"]["score_breakdown"]
+        for key, val in exp.items():
+            self.assertAlmostEqual(
+                self.metrics["score_breakdown"][key],
+                val,
+                delta=0.05,
+            )
 
     def test_video_timestamps(self):
         self.assertAlmostEqual(
@@ -572,6 +587,18 @@ class TestPipelineIntegration(unittest.TestCase):
 #
 # To add a tolerance for a new metric, add it here.
 _VIDEO_FLOAT_TOLERANCES = {
+    # ── Composite score (int in JSON; compared via int branch using this delta)
+    "score":                           10.0,
+    # ── Session score rollups ───────────────────────────────────────────────
+    "avg_jump_score":                  3.0,
+    "best_jump_score":                 5.0,
+    "worst_jump_score":                5.0,
+    # ── score_breakdown channel sub-scores (0–100) ───────────────────────────
+    "landing_quality":                 12.0,
+    "jump_quality":                    8.0,
+    "drift_stability":                 12.0,
+    "approach_control":                12.0,
+    "takeoff_form":                    12.0,
     # ── Time fields ────────────────────────────────────────────────────────
     "air_time_sec":                    0.15,
     "start_video_time_sec":            0.20,
@@ -699,6 +726,15 @@ class _VideoRegressionBase:
             tol = _VIDEO_FLOAT_TOLERANCES.get(field, _VIDEO_FLOAT_TOLERANCE_DEFAULT)
             self.assertAlmostEqual(
                 actual, golden, delta=tol,
+                msg=f"At '{path}': expected {golden} ± {tol}, got {actual}",
+            )
+
+        elif isinstance(golden, int) and path.rsplit(".", 1)[-1] in _VIDEO_FLOAT_TOLERANCES:
+            # Integer JSON fields (e.g. score) that tolerate inference-driven drift
+            field = path.rsplit(".", 1)[-1]
+            tol = _VIDEO_FLOAT_TOLERANCES[field]
+            self.assertAlmostEqual(
+                float(actual), float(golden), delta=tol,
                 msg=f"At '{path}': expected {golden} ± {tol}, got {actual}",
             )
 
