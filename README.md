@@ -345,3 +345,91 @@ distance = |cross_product(landing − takeoff, takeoff − point)| / |landing �
 ```
 
 ---
+
+## Testing
+
+### Running tests
+
+```bash
+# Fast tests (no GPU, ~2 s) — run after every change
+python -m pytest tests/ -v -m "not slow"
+
+# Full suite including tracker smoke tests (~15 s, requires YOLO model load)
+python -m pytest tests/ -v
+
+# Single file
+python -m pytest tests/test_e2e.py -v -m "not slow"
+python -m pytest tests/test_analyzer.py -v
+```
+
+### Test files
+
+| File | What it tests |
+|---|---|
+| `tests/test_analyzer.py` | Unit tests for `JumpAnalyzer` — jump detection logic and landing classification |
+| `tests/test_tracker.py` | Smoke tests for `PlayerTracker` — initialisation and `process_frame` return shape |
+| `tests/test_utils.py` | Unit tests for geometry helpers (`calculate_angle`, `calculate_distance`, etc.) |
+| `tests/test_camera_calib.py` | Unit tests for perspective transform accuracy |
+| `tests/test_e2e.py` | End-to-end tests (three layers — see below) |
+
+### End-to-end test layers (`test_e2e.py`)
+
+- **Layer 1 — Metric regression tests (`TestE2EMetricRegression`):** Feed the deterministic 11-frame fixture (`tests/fixtures/single_jump_sequence.json`) through `JumpAnalyzer` and assert every metric value against `tests/fixtures/expected_output.json`. Catches silent regressions in metric formulas without running a real video.
+- **Layer 2 — Tracker smoke tests (`@pytest.mark.slow`):** Verify `PlayerTracker` initialises and `process_frame` returns a 6-tuple without crashing. Requires the YOLO model to load — excluded from fast CI.
+- **Layer 3 — Pipeline integration tests:** Mock the tracker, generate a synthetic video in memory, run the full `main.py` processing loop, and assert on the saved JSON structure and values.
+
+### Adding tests for new metrics
+
+1. Add frames to `tests/fixtures/single_jump_sequence.json` if the new metric requires different input.
+2. Compute the expected value by hand or from a trusted run, then add it to `tests/fixtures/expected_output.json`.
+3. Add an assertion to `TestE2EMetricRegression` in `tests/test_e2e.py`.
+
+---
+
+## CI Pipeline
+
+Three jobs run on every pull request, push to `main`, and merge-queue event.
+
+| Job | Blocks merge? | What it checks |
+|---|---|---|
+| **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow"` — all non-GPU tests must pass |
+| **Lint (syntax errors)** | Yes | `flake8 --select=E9,F63,F7,F82` — runtime errors and undefined names only |
+| **Lint (style)** | No | Full `flake8` style check — informational, never blocks |
+| **Type-check** | No | `mypy` with `--exit-code 0` — informational while annotations are sparse |
+
+Slow tests (`@pytest.mark.slow`) require a real video file and GPU — run them locally before opening a PR.
+
+---
+
+## Development Guidelines
+
+### Adding a new metric
+
+1. Add a regression test to `TestE2EMetricRegression` in `tests/test_e2e.py` and update `tests/fixtures/expected_output.json` with the pre-computed expected value.
+2. Implement the metric in `analyzer.py`.
+3. Document the new field in `README.md` under the relevant `metrics` table, including units and value range.
+4. Verify consistency: run the tool twice on the same video and confirm the output is identical:
+   ```bash
+   python main.py --video single_jump.mov --player_id 1 --output output/run1.json
+   python main.py --video single_jump.mov --player_id 1 --output output/run2.json
+   diff output/run1.json output/run2.json
+   ```
+
+### Consistency check
+
+The tool must be deterministic. Before calling any feature done, run the consistency check above (`diff` should produce no output).
+
+---
+
+## Dependencies
+
+| Package | Purpose |
+|---|---|
+| `opencv-python` | Video decoding, frame processing, perspective transform |
+| `mediapipe` | Pose estimation — 33 body landmarks per frame |
+| `ultralytics` | YOLOv10 player detection + ByteTrack multi-object tracking |
+| `numpy` | Numerical operations |
+| `scipy` | Signal processing |
+| `matplotlib` | Visualisation utilities |
+| `pandas` | Data handling |
+| `scikit-learn` | ML utilities |
