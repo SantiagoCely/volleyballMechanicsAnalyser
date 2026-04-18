@@ -395,7 +395,7 @@ Three jobs run on every pull request, push to `main`, and merge-queue event.
 | **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow"` — all non-GPU tests must pass |
 | **Lint (syntax errors)** | Yes | `flake8 --select=E9,F63,F7,F82` — runtime errors and undefined names only |
 | **Lint (style)** | No | Full `flake8` style check — informational, never blocks |
-| **Type-check** | No | `mypy` with `--exit-code 0` — informational while annotations are sparse |
+| **Type-check** | No | `mypy` run with `|| true` — always passes, findings visible in CI logs only |
 
 Slow tests (`@pytest.mark.slow`) require a real video file and GPU — run them locally before opening a PR.
 
