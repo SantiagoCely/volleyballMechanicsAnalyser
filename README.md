@@ -294,9 +294,9 @@ Each call to `process_frame(frame)`:
 1. **YOLO detection** — YOLOv10n runs on the full frame (GPU via MPS on Apple Silicon, CUDA on NVIDIA, CPU fallback). Returns bounding boxes and ByteTrack IDs for all detected persons.
 2. **Target selection** — the box whose ByteTrack ID matches `target_player_id` is selected. If no match (occlusion, ID switch), re-ID runs.
 3. **Re-ID** — a candidate is accepted as the re-acquired target only if all three conditions hold:
-   - Centre-to-centre distance from last known position ≤ 200 px
    - Bounding-box height within ±30% of last known height
    - Hue-histogram correlation between the candidate's torso crop and the saved target histogram ≥ 0.5
+   - Centre-to-centre distance from last known position ≤ 200 px (the closest passing candidate is selected)
 4. **MediaPipe Pose** — run on the player's bounding-box crop. Uses `model_complexity=1` and 3D world landmarks for knee angles (more robust than 2D pixel angles under perspective distortion).
 5. **Extracted values:**
    - `knee_angles` — `(left_deg, right_deg)` computed via the hip→knee→ankle angle in 3D world space
