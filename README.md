@@ -169,7 +169,7 @@ Results are saved as a JSON array. The first element is always a `SESSION_SUMMAR
 | `air_time_sec` | float | Time from takeoff to landing (seconds) |
 | `jump_height_est_cm` | float | Estimated vertical hip displacement (cm), derived from the ratio of hip pixel travel to baseline hip height |
 | `jump_height_est_inch` | float | Same as above, in inches |
-| `takeoff_angle_deg` | float \| null | Jump trajectory angle from horizontal (degrees). Computed as `atan2(v₀_vertical, approach_velocity)`. Only present when approach velocity is available |
+| `takeoff_angle_deg` | float \| null | Jump trajectory angle from horizontal (degrees). Computed as `atan2(v₀_vertical, approach_velocity)`. `null` when approach velocity is unavailable (i.e., without `--calibrate`) |
 | `peak_wrist_height_ratio` | float \| null | Wrist height relative to the shoulder-to-hip body segment at peak jump. > 1.0 means wrists are above the shoulders (full arm extension) |
 | `arm_swing_symmetry_px` | float \| null | Absolute difference between left and right wrist Y positions at takeoff (pixels). 0 = perfectly symmetric arm swing |
 
