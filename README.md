@@ -263,3 +263,85 @@ output/<video_stem>_analysis.json
 ```
 
 ---
+
+## Architecture Deep-Dive
+
+### `JumpAnalyzer` state machine
+
+The analyzer operates in three states per jump cycle:
+
+**1. Grounded (waiting for takeoff)**
+- Jump detected when `hip_y < baseline_hip_height × 0.93` (hip rises more than 7% above its standing baseline).
+- At the moment of takeoff, the analyzer captures: jump start time and court position, approach velocity (OLS regression over a 0.5 s sliding window — see formula below), stance width, crouch depth/duration from a 1 s approach buffer, trunk lean, and arm swing symmetry.
+- While grounded, a slow EMA adapts the baseline: `baseline = 0.98 × baseline + 0.02 × hip_y`. The guard `|hip_y − baseline| / baseline < 0.15` ensures crouches and jumps don't corrupt the baseline estimate.
+
+**2. Airborne (tracking peak)**
+- Tracks the minimum `hip_y` seen so far (lower pixel Y = higher in frame = peak height).
+- Accumulates all CoM (hip) positions for the flight-drift computation.
+
+**3. Landing**
+- Landing detected when `hip_y ≥ baseline_hip_height × 0.97`.
+- Computes: air time, jump height, knee angles at landing, all drift metrics, takeoff angle, CoM flight drift, and peak wrist height ratio.
+- Appends a `JUMP` entry to the history log.
+- Starts a 300 ms **post-landing absorption window**: collects knee angles until it expires, then amends the most recent `JUMP` entry with `min_landing_knee_angle_deg`, `landing_absorption_duration_sec`, and `landing_knee_flexion_rate_degs`.
+
+---
+
+### `PlayerTracker` pipeline
+
+Each call to `process_frame(frame)`:
+
+1. **YOLO detection** — YOLOv10n runs on the full frame (GPU via MPS on Apple Silicon, CUDA on NVIDIA, CPU fallback). Returns bounding boxes and ByteTrack IDs for all detected persons.
+2. **Target selection** — the box whose ByteTrack ID matches `target_player_id` is selected. If no match (occlusion, ID switch), re-ID runs.
+3. **Re-ID** — a candidate is accepted as the re-acquired target only if all three conditions hold:
+   - Centre-to-centre distance from last known position ≤ 200 px
+   - Bounding-box height within ±30% of last known height
+   - Hue-histogram correlation between the candidate's torso crop and the saved target histogram ≥ 0.5
+4. **MediaPipe Pose** — run on the player's bounding-box crop. Uses `model_complexity=1` and 3D world landmarks for knee angles (more robust than 2D pixel angles under perspective distortion).
+5. **Extracted values:**
+   - `knee_angles` — `(left_deg, right_deg)` computed via the hip→knee→ankle angle in 3D world space
+   - `hip_y` — pixel Y of the mid-hip landmark (lower = higher in frame)
+   - `ground_pos` — midpoint of left and right ankle pixels
+   - `foot_pixels` — `((left_ankle_x, left_ankle_y), (right_ankle_x, right_ankle_y))`
+   - `upper_body` — `{"shoulders_px": [(lx,ly),(rx,ry)], "wrists_px": [(lx,ly),(rx,ry)]}`
+
+---
+
+### `CameraCalibrator` — pixel → cm transform
+
+The user clicks 4 court corners (top-left, top-right, bottom-right, bottom-left) on the first frame. `cv2.getPerspectiveTransform` computes a 3×3 homography matrix mapping those 4 points to a canonical 900×1800 rectangle (representing a standard 9 m × 18 m volleyball court at 1 px/cm). `transform_point(px, py)` applies `cv2.perspectiveTransform` to any pixel coordinate, returning `(x_cm, y_cm)` in court space.
+
+---
+
+### Key metric formulas
+
+**Approach velocity (cm/s)**
+OLS linear regression on court positions over the 0.5 s window before takeoff:
+```
+vx = Σ(t − t̄)(x − x̄) / Σ(t − t̄)²
+vy = Σ(t − t̄)(y − ȳ) / Σ(t − t̄)²
+speed = sqrt(vx² + vy²)
+```
+OLS is used rather than start-to-end displacement because a single noisy frame at either edge of the window cannot inflate the result.
+
+**Jump height (cm)**
+```
+pixel_jump = baseline_hip_y − peak_hip_y
+jump_height_cm = (pixel_jump / baseline_hip_y) × 100
+```
+Interprets the hip's fractional rise relative to its standing position as a percentage of an assumed ~100 cm hip height. Most accurate when court calibration is active (pixel scale is known).
+
+**Takeoff angle (degrees)**
+```
+v0_vertical = sqrt(2 × 981 cm/s² × jump_height_cm)
+takeoff_angle = atan2(v0_vertical, approach_velocity_cms)
+```
+Estimates how much of the athlete's total takeoff velocity was directed vertically vs. horizontally. `null` without calibration.
+
+**CoM flight drift (cm)**
+Maximum perpendicular distance from any hip position during flight to the straight line between takeoff and landing positions. Computed via the point-to-line formula:
+```
+distance = |cross_product(landing − takeoff, takeoff − point)| / |landing − takeoff|
+```
+
+---
