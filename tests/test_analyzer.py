@@ -402,6 +402,11 @@ class TestSessionSummary(unittest.TestCase):
             self.assertIsNone(summary['jump_height_variability_cm'])
             self.assertIsNone(summary['air_time_variability_sec'])
             self.assertEqual(summary['video'], 'test_video.mov')
+            self.assertEqual(summary['avg_jump_score'], 73.0)
+            self.assertEqual(summary['best_jump_num'], 1)
+            self.assertEqual(summary['best_jump_score'], 73.0)
+            self.assertEqual(summary['worst_jump_num'], 1)
+            self.assertEqual(summary['worst_jump_score'], 73.0)
         finally:
             os.unlink(path)
 
@@ -432,6 +437,11 @@ class TestSessionSummary(unittest.TestCase):
             self.assertGreater(summary['jump_height_variability_cm'], 0)
             self.assertIsNotNone(summary['air_time_variability_sec'])
             self.assertEqual(summary['video'], 'test_video.mov')
+            self.assertEqual(summary['avg_jump_score'], 81.5)
+            self.assertEqual(summary['best_jump_num'], 2)
+            self.assertEqual(summary['best_jump_score'], 90.0)
+            self.assertEqual(summary['worst_jump_num'], 1)
+            self.assertEqual(summary['worst_jump_score'], 73.0)
         finally:
             os.unlink(path)
 

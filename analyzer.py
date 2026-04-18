@@ -4,6 +4,8 @@ import statistics
 
 import numpy as np
 
+from jump_scoring import compute_jump_score, session_jump_score_stats
+
 # Gravitational acceleration in cm/s²
 _GRAVITY_CM_S2 = 981.0
 
@@ -372,6 +374,10 @@ class JumpAnalyzer:
                     com_drift = self._compute_com_flight_drift(self.jump_start_pos, court_pos, self.com_positions_during_jump)
                     metrics_section["com_flight_drift_cm"] = round(com_drift, 1)
 
+                scoring = compute_jump_score(metrics_section, takeoff_section)
+                metrics_section["score"] = scoring["score"]
+                metrics_section["score_breakdown"] = scoring["score_breakdown"]
+
                 # Build unified JUMP entry
                 jump_entry = {
                     "event": "JUMP",
@@ -421,6 +427,7 @@ class JumpAnalyzer:
             "jump_height_variability_cm": height_consistency,
             "air_time_variability_sec": air_time_consistency,
         }
+        session_summary.update(session_jump_score_stats(self.history))
         output = [session_summary] + self.history
 
         with open(filename, 'w') as f:
