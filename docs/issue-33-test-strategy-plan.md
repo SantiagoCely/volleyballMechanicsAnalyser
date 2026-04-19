@@ -163,13 +163,13 @@ Use **`@pytest.mark.fuzz`**, cap **`max_examples`**, **`deadline`** or **`pytest
 3. **State machine suite** — Named scenarios + docstrings.
 4. **Determinism** — Double-run JSON / `save_logs` equality (fast).
 5. **README (+ optional CLAUDE)** — Document markers and optional suites.
-6. **Phase 2** — Hypothesis fuzz; optional subprocess integration; optional slow video `diff` test.
+6. ~~**Phase 2**~~ — Hypothesis **`@pytest.mark.fuzz`** suite (`tests/test_fuzz_properties.py`); CI/readme `-m "not slow and not fuzz"`. *(Optional subprocess integration / slow video `diff` — still deferred.)*
 
 ---
 
 ## Verification before closing the issue
 
-- `python -m pytest tests/ -v -m "not slow"` passes (or the **exact** expression documented in **README + ci.yml** after marker changes).
+- `python -m pytest tests/ -v -m "not slow and not fuzz"` passes (or the **exact** expression documented in **README + ci.yml** after marker changes).
 - New tests are **deterministic** and **bounded** (timeouts or finite examples).
 - **`README.md`** Testing (and **CI Pipeline**) updated when markers or jobs change.
 - Optional: manual **`diff`** consistency check from **`CLAUDE.md`** when changing pipeline determinism.

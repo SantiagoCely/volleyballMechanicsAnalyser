@@ -44,11 +44,10 @@ jobs:
       - name: Install test runner
         run: pip install pytest pytest-timeout
 
-      # Blocking suite: excludes @slow (GPU/video). When optional markers such as fuzz/stress
-      # are introduced, extend the expression (e.g. -m "not slow and not fuzz and not stress")
-      # and mirror it in README → CI Pipeline.
+      # Blocking suite: excludes @slow (GPU/video) and @fuzz (Hypothesis — non-deterministic runtime).
+      # Extend with e.g. `and not stress` if a stress marker is added; mirror README → CI Pipeline.
       - name: Run fast test suite
-        run: python -m pytest tests/ -v -m "not slow" --tb=short
+        run: python -m pytest tests/ -v -m "not slow and not fuzz" --tb=short
 
   # ── Job 2: Linting ────────────────────────────────────────────────────────
   # Two-pass flake8:
