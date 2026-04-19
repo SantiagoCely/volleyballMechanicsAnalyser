@@ -83,6 +83,8 @@ diff output/run1.json output/run2.json
 
 `diff` must produce no output.
 
+Fast in-process coverage of the same idea (fixture sequence, no video): `tests/test_determinism.py` (`TestSaveLogsDeterminism`).
+
 **Example clip:** `single_jump.mov` is intentionally **not in git** (see `.gitignore` — `*.mov`). Keep a short test clip at the **repo root** locally; fresh clones skip this step until a file is added.
 
 ## Metric audit (GitHub #15)

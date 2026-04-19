@@ -467,10 +467,24 @@ python -m pytest tests/test_analyzer.py -v
 | File | What it tests |
 |---|---|
 | `tests/test_analyzer.py` | Unit tests for `JumpAnalyzer` — jump detection logic and landing classification |
+| `tests/test_analyzer_state_machine.py` | Synthetic frame sequences asserting jump / post-landing state transitions (`is_jumping`, `post_landing_active`, history) |
+| `tests/test_determinism.py` | Same inputs produce identical saved JSON (`save_logs`) and identical `compute_jump_score` outputs |
+| `tests/test_main_cli.py` | `parse_main_args` / default `--output` path / nested output dir creation / `main.py --help` (no model load) |
 | `tests/test_tracker.py` | Smoke tests for `PlayerTracker` — initialisation and `process_frame` return shape |
 | `tests/test_utils.py` | Unit tests for geometry helpers (`calculate_angle`, `calculate_distance`, etc.) |
 | `tests/test_camera_calib.py` | Unit tests for perspective transform accuracy |
 | `tests/test_e2e.py` | End-to-end tests (three layers — see below) |
+
+### pytest markers, timeouts, CI
+
+| Marker | Meaning |
+|--------|---------|
+| *(default)* | Fast tests selected by `-m "not slow"` |
+| `slow` | YOLO load and/or committed golden video regressions — excluded from PR CI |
+
+Some tests use **`pytest-timeout`** (`@pytest.mark.timeout`) so bounded loops stay bounded. Install with `pip install pytest pytest-timeout` (included when installing from `requirements.txt`).
+
+If you add optional markers such as **`fuzz`** or **`stress`** (property or long-run suites), register them in `pytest.ini` and change the blocking CI expression to exclude them explicitly — for example `-m "not slow and not fuzz and not stress"` — because pytest does not auto-exclude unknown markers.
 
 ### End-to-end test layers (`test_e2e.py`)
 
@@ -493,7 +507,7 @@ Three jobs run on every pull request, push to `main`, and merge-queue event.
 
 | Job | Blocks merge? | What it checks |
 |---|---|---|
-| **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow"` — all non-GPU tests must pass |
+| **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow"` — all non-GPU tests must pass (`pytest-timeout` enables per-test timeouts in some modules; extend the `-m` filter if `fuzz` / `stress` markers are added later) |
 | **Lint (syntax errors)** | Yes | `flake8 --select=E9,F63,F7,F82` — runtime errors and undefined names only |
 | **Lint (style)** | No | Full `flake8` style check — informational, never blocks |
 | **Type-check** | No | `mypy` run with `|| true` — always passes, findings visible in CI logs only |

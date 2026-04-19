@@ -42,8 +42,11 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Install test runner
-        run: pip install pytest
+        run: pip install pytest pytest-timeout
 
+      # Blocking suite: excludes @slow (GPU/video). When optional markers such as fuzz/stress
+      # are introduced, extend the expression (e.g. -m "not slow and not fuzz and not stress")
+      # and mirror it in README → CI Pipeline.
       - name: Run fast test suite
         run: python -m pytest tests/ -v -m "not slow" --tb=short
 

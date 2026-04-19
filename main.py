@@ -5,6 +5,44 @@ from camera_calib import CameraCalibrator
 from tracker import PlayerTracker
 from analyzer import JumpAnalyzer
 
+
+def build_arg_parser():
+    """Return the ArgumentParser for CLI (shared with `parse_main_args` / `main`)."""
+    parser = argparse.ArgumentParser(description="Volleyball Mechanics Analyzer")
+    parser.add_argument("--video", type=str, required=True, help="Path to the video file")
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Enable court calibration for position-based metrics (drift, approach velocity, etc.)",
+    )
+    parser.add_argument("--player_id", type=int, default=None, help="Specific Player ID to track")
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Save results JSON to a custom path. Default: output/<video_stem>_analysis.json",
+    )
+    parser.add_argument("--show", action="store_true", help="Display the video with overlays")
+    parser.add_argument("--debug", action="store_true", help="Print per-frame tracking and jump-detection diagnostics")
+    return parser
+
+
+def parse_main_args(argv=None):
+    """Parse CLI argv and apply the default `--output` path. Does not load YOLO or open video."""
+    args = build_arg_parser().parse_args(argv)
+    if args.output is None:
+        video_stem = os.path.splitext(os.path.basename(args.video))[0]
+        args.output = os.path.join("output", f"{video_stem}_analysis.json")
+    return args
+
+
+def ensure_output_parent_dir(output_path):
+    """Create parent directories for `output_path` if any (mirrors `main()` before `save_logs`)."""
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+
 def get_court_corners_logic(frame):
     corners = []
     window_name = "Calibration: Click 4 corners. 'u': Undo, 'r': Reset, 'Enter': Finish, 'q': Quit."
@@ -97,21 +135,7 @@ def select_target_player(video_path, tracker):
     return selected_id[0]
 
 def main():
-    parser = argparse.ArgumentParser(description="Volleyball Mechanics Analyzer")
-    parser.add_argument("--video", type=str, required=True, help="Path to the video file")
-    parser.add_argument("--calibrate", action="store_true",
-        help="Enable court calibration for position-based metrics (drift, approach velocity, etc.)")
-    parser.add_argument("--player_id", type=int, default=None, help="Specific Player ID to track")
-    parser.add_argument("--output", type=str, default=None,
-        help="Save results JSON to a custom path. Default: output/<video_stem>_analysis.json")
-    parser.add_argument("--show", action="store_true", help="Display the video with overlays")
-    parser.add_argument("--debug", action="store_true", help="Print per-frame tracking and jump-detection diagnostics")
-
-    args = parser.parse_args()
-
-    if args.output is None:
-        video_stem = os.path.splitext(os.path.basename(args.video))[0]
-        args.output = os.path.join("output", f"{video_stem}_analysis.json")
+    args = parse_main_args()
 
     # 1. Tracker Initialization
     tracker = PlayerTracker(target_player_id=args.player_id)
@@ -189,9 +213,7 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
     print(f"Analysis complete. Total Jumps: {analyzer.jump_count}")
-    output_dir = os.path.dirname(args.output)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
+    ensure_output_parent_dir(args.output)
     video_name = os.path.basename(args.video)
     analyzer.save_logs(args.output, video_name=video_name)
 

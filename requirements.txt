@@ -6,3 +6,4 @@ pandas
 scipy
 scikit-learn
 ultralytics
+pytest-timeout>=2.0  # optional dev/CI — per-test timeouts (see README Testing)
