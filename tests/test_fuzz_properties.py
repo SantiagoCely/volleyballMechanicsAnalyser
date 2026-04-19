@@ -2,7 +2,6 @@
 Property-style fuzz tests (Hypothesis). Tagged @pytest.mark.fuzz — excluded from the
 default fast CI gate; run locally with: pytest tests/test_fuzz_properties.py -m fuzz -v
 
-See docs/issue-33-test-strategy-plan.md (Phase 2).
 """
 
 import itertools

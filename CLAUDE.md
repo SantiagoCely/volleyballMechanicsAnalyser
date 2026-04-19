@@ -2,6 +2,10 @@
 
 > For full project documentation (architecture, output schema, metrics reference, CLI flags) see `README.md`. Jump composite scoring and session rollups are under **Output Format → Jump scoring** and **SESSION_SUMMARY** in `README.md`.
 
+## Planning docs (agents)
+
+Implementation plans and issue/task breakdown files exist only to steer work — **do not commit them** to this repository (no new plan `.md` files under `docs/` or elsewhere from agent work unless the maintainer explicitly asks that a specific document be persisted). Prefer keeping plans in chat or local-only notes.
+
 ## Running the analyser
 
 See `README.md` — [Quick Start](#quick-start) and [CLI Flags](#cli-flags).

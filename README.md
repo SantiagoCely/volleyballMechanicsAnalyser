@@ -496,15 +496,13 @@ python -m pytest tests/test_analyzer.py -v
 
 Some tests use **`pytest-timeout`** (`@pytest.mark.timeout`) so bounded loops stay bounded. Install with `pip install pytest pytest-timeout` (included when installing from `requirements.txt`). **`hypothesis`** powers `@pytest.mark.fuzz` tests (also listed in `requirements.txt`).
 
-Optional follow-ups (subprocess integration, stress, slow determinism) are summarized in **`docs/issue-33-optional-followups-plan.md`**.
-
 If you add more optional markers, register them in `pytest.ini` and extend the blocking CI `-m` expression — pytest does not auto-exclude unknown markers.
 
 ### End-to-end test layers (`test_e2e.py`)
 
 - **Layer 1 — Metric regression tests (`TestE2EMetricRegression`):** Feed the deterministic 11-frame fixture (`tests/fixtures/single_jump_sequence.json`) through `JumpAnalyzer` and assert every metric value against `tests/fixtures/expected_output.json`. Catches silent regressions in metric formulas without running a real video.
 - **Layer 2 — Tracker smoke tests (`@pytest.mark.slow`):** Verify `PlayerTracker` initialises and `process_frame` returns a 6-tuple without crashing. Requires the YOLO model to load — excluded from fast CI.
-- **Layer 3 — Pipeline integration tests:** Mock the tracker, generate a synthetic video on disk, run the **same processing loop** as `main.py` (in-process), and assert on the saved JSON. **Additional optional coverage:** subprocess `main.main()` with `tests/run_main_mocked_subprocess.py` — see `tests/test_optional_integration.py` and **`docs/issue-33-optional-followups-plan.md`**.
+- **Layer 3 — Pipeline integration tests:** Mock the tracker, generate a synthetic video on disk, run the **same processing loop** as `main.py` (in-process), and assert on the saved JSON. **Additional coverage:** subprocess `main.main()` with **`tests/run_main_mocked_subprocess.py`** — see **`tests/test_optional_integration.py`**.
 
 ### Adding tests for new metrics
 

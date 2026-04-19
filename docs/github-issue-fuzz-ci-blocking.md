@@ -20,5 +20,5 @@ This issue tracks promoting that step to **blocking** once we have evidence the 
 
 ## Related
 
-- **`docs/issue-33-test-strategy-plan.md`** (Phase 2 fuzz)
+- GitHub [**#33** — Test strategy](https://github.com/SantiagoCely/volleyballMechanicsAnalyser/issues/33) (context)
 - **`tests/test_fuzz_properties.py`**

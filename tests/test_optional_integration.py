@@ -1,6 +1,6 @@
 """
-Optional integration coverage from ``docs/issue-33-test-strategy-plan.md`` §6 —
-subprocess entrypoint with synthetic video + mocked tracker (no GPU).
+Subprocess integration: real ``main.main()`` with synthetic video + mocked
+``PlayerTracker`` (no YOLO).
 """
 
 import json
