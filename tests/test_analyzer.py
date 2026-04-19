@@ -315,6 +315,77 @@ class TestLandingAbsorption(unittest.TestCase):
         self.assertIsNone(jump['metrics']['landing_absorption_duration_sec'])
 
 
+class TestNullableMetricSemantics(unittest.TestCase):
+    """Regression: nullable fields match README — Python None (JSON null), correct omission, no numeric sentinels."""
+
+    def test_uncalibrated_jump_omits_position_derived_metrics(self):
+        """No court_pos → drift and landing omitted; CoM drift omitted; takeoff angle null at metrics key."""
+        a = JumpAnalyzer()
+        a.analyze_frame(1, (170, 175), 400)
+        a.analyze_frame(1, (170, 175), 300)
+        a.analyze_frame(1, (140, 145), 400)
+
+        jump = a.history[-1]
+        self.assertEqual(jump["event"], "JUMP")
+        self.assertNotIn("landing_pos", jump)
+
+        metrics = jump["metrics"]
+        self.assertNotIn("drift_cm", metrics)
+        self.assertNotIn("com_flight_drift_cm", metrics)
+
+        self.assertIn("takeoff_angle_deg", metrics)
+        self.assertIsNone(metrics["takeoff_angle_deg"])
+
+        takeoff = jump["takeoff"]
+        self.assertIsNone(takeoff["pos"])
+        self.assertNotIn("approach_velocity_cms", takeoff)
+        self.assertNotIn("stance_width_cm", takeoff)
+        self.assertIn("trunk_lean_deg", takeoff)
+        self.assertIsNone(takeoff["trunk_lean_deg"])
+
+    def test_json_roundtrip_nulls_not_sentinels(self):
+        """After JSON encode/decode, missing data stays null — never 0 or string 'null'."""
+        import json
+
+        a = JumpAnalyzer()
+        a.analyze_frame(1, (170, 175), 400)
+        a.analyze_frame(1, (170, 175), 300)
+        a.analyze_frame(1, (140, 145), 400)
+
+        raw = json.dumps(a.history[-1])
+        self.assertIn("null", raw)
+        restored = json.loads(raw)
+        self.assertIsNone(restored["metrics"]["takeoff_angle_deg"])
+        self.assertIsNone(restored["metrics"]["peak_wrist_height_ratio"])
+        self.assertIsNone(restored["metrics"]["arm_swing_symmetry_px"])
+        self.assertIsNone(restored["takeoff"]["pos"])
+
+    def test_empty_session_score_rollups_are_null(self):
+        """No completed jumps → SESSION_SUMMARY score fields are JSON null."""
+        import json
+        import os
+        import tempfile
+
+        a = JumpAnalyzer()
+        a.analyze_frame(1, (170, 175), 400, frame_time=0.0)
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            path = f.name
+        try:
+            a.save_logs(path, video_name="x.mov")
+            with open(path) as f:
+                data = json.load(f)
+            summary = data[0]
+            self.assertEqual(summary["jump_count"], 0)
+            self.assertIsNone(summary["avg_jump_score"])
+            self.assertIsNone(summary["best_jump_num"])
+            self.assertIsNone(summary["best_jump_score"])
+            self.assertIsNone(summary["worst_jump_num"])
+            self.assertIsNone(summary["worst_jump_score"])
+        finally:
+            os.unlink(path)
+
+
 class TestUpperBodyMetrics(unittest.TestCase):
     def setUp(self):
         self.analyzer = JumpAnalyzer()
