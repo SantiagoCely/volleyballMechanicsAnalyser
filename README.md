@@ -86,39 +86,48 @@ Results are saved as a JSON array. The first element is always a `SESSION_SUMMAR
 
 | Field | Type | Description |
 |---|---|---|
+| `event` | string | Always `"SESSION_SUMMARY"` |
+| `video` | string \| null | Basename of the analyzed file from `--video`. `null` if results were saved without a name (e.g. some tests call `save_logs` with no `video_name`) |
 | `jump_count` | int | Total jumps detected in the video |
-| `jump_height_variability_cm` | float \| null | Standard deviation of estimated jump heights across all jumps. `null` if fewer than 2 jumps |
-| `air_time_variability_sec` | float \| null | Standard deviation of air times. `null` if fewer than 2 jumps |
-| `avg_jump_score` | float \| null | Mean composite jump score (see [Jump scoring](#jump-scoring)) across completed jumps. `null` if there are no scored jumps |
-| `best_jump_num` | int \| null | `jump_num` of the highest-scoring jump. `null` if there are no scored jumps |
+| `jump_height_variability_cm` | float \| null | Sample standard deviation (`statistics.stdev`) of `jump_height_est_cm` across all jumps. `null` if fewer than 2 jumps |
+| `air_time_variability_sec` | float \| null | Sample standard deviation of `air_time_sec` across all jumps. `null` if fewer than 2 jumps |
+| `avg_jump_score` | float \| null | Mean of each jump’s `metrics.score` (see [Jump scoring](#jump-scoring)). `null` if no `JUMP` entry has `metrics.score` (should not occur in normal runs). Jumps without `metrics.score` are skipped |
+| `best_jump_num` | int \| null | `jump_num` of the highest-scoring jump. `null` if there are no scored jumps. If two jumps tie for highest, the earlier `jump_num` in file order wins |
 | `best_jump_score` | float \| null | Highest composite score in the session |
-| `worst_jump_num` | int \| null | `jump_num` of the lowest-scoring jump |
+| `worst_jump_num` | int \| null | `jump_num` of the lowest-scoring jump. If two jumps tie for lowest, the earlier `jump_num` wins |
 | `worst_jump_score` | float \| null | Lowest composite score in the session |
 
 ---
 
 ### Jump scoring
 
-Each completed `JUMP` includes a composite **score** (0–100, percentage-style) and a **score_breakdown** of channel sub-scores (each 0–100 before weighting). Implementation lives in `jump_scoring.py`; formulas belong there — this section documents the coaching contract.
+Each completed `JUMP` includes a composite **score** (`int`, **0–100**) and a **`score_breakdown`** of per-channel sub-scores (each **0–100** **before** weighting). **`compute_jump_score`** (`jump_scoring.py`):
 
-**Channels and default weights** (weights are **renormalized** over channels that have data — e.g. without `--calibrate`, drift / approach / stance-driven form are skipped):
+1. Computes one sub-score per channel that has inputs (missing optional inputs → entire channel omitted).
+2. **Renormalizes** the five **base weights** over **only** those active channels so they sum to **1**.
+3. **`score = int(round(sum(weight_i × sub_score_i)))`**, clamped to **\[0, 100\]**.
+4. **`score_breakdown`** lists **`round(sub_score_i, 1)`** only for active channels — except the degenerate case below.
+
+**Degenerate inputs:** If **no** channel produced a sub-score (should not occur for a normal completed jump), **`score`** is **`0`** and **`score_breakdown`** is **`{"_error": "no scoring inputs available"}`**.
+
+**Channels and default weights** (weights are **renormalized** over channels that have data — without **`--calibrate`**, **`drift_stability`**, **`approach_control`**, and parts of **`takeoff_form`** usually drop because **`metrics.drift_cm`**, **`takeoff.approach_velocity_cms`**, **`takeoff.stance_width_cm`**, or **`metrics.takeoff_angle_deg`** are missing):
 
 | Channel | Inputs | Interpretation |
 |--------|--------|------------------|
-| `landing_quality` | `knee_angles.left`, `knee_angles.right` at contact | Target soft landing band **130°–155°** per knee; stiffer (higher) angles lose points faster |
-| `jump_quality` | `jump_height_est_cm` | Sub-score for vertical hip displacement: higher estimated height scores better; linear map from **8 cm** (0 pts) to **45 cm** (100 pts). Named `jump_quality` to avoid confusion with `jump_height_est_cm` |
-| `drift_stability` | `drift_cm.magnitude` | Only with calibration; **0 cm drift = 100**, score falls to **0** at **40 cm** magnitude |
-| `approach_control` | `takeoff.approach_velocity_cms` | Only with calibration; full points on **350–620 cm/s**, tapering to **0** toward **150** and **800 cm/s** |
-| `takeoff_form` | `takeoff.stance_width_cm`, `metrics.takeoff_angle_deg` | Average of available parts: stance near **18–38 cm** and angle near **12°–40°** score highest |
+| `landing_quality` | `knee_angles.left`, `knee_angles.right` at contact | Each knee scored then **averaged**. **100** in **[130°, 155°]**; below **130°**, lose **4** points per degree shallow of **130°**; above **155°**, lose **5** points per degree stiff above **155°** |
+| `jump_quality` | `jump_height_est_cm` | Linear map: **8 cm → 0**, **45 cm → 100**, linear between (below **8 → 0**, above **45 → 100** via clamp). Named **`jump_quality`** to avoid confusion with **`jump_height_est_cm`** |
+| `drift_stability` | `drift_cm.magnitude` | **`100 − (magnitude / 40) × 100`**, floored at **0** (**40 cm → 0**). Requires **`drift_cm`** |
+| `approach_control` | `takeoff.approach_velocity_cms` | **100** in **[350, 620]** cm/s; linear **0–100** between **150–350** and **620–800**; **≤150** or **≥800 → 0** |
+| `takeoff_form` | `takeoff.stance_width_cm`, `metrics.takeoff_angle_deg` | **Mean** of whichever sub-scores exist: **stance** **100** when **\[18, 38\]** cm (else linear penalty outside band), **angle** **100** when **\[12°, 40°\]** (else linear penalty). If **only one** of stance/angle exists, **`takeoff_form`** equals that single sub-score |
 
-**Base weights before renormalization:** landing 0.25, jump-quality (height-based) 0.25, drift 0.20, approach 0.15, takeoff form 0.15.
+**Base weights before renormalization:** landing **0.25**, jump-quality **0.25**, drift **0.20**, approach **0.15**, takeoff form **0.15**.
 
 #### `metrics` fields — Jump scoring
 
 | Field | Type | Description |
 |--------|------|-------------|
-| `score` | int | Composite jump quality **0–100** |
-| `score_breakdown` | object | Per-channel sub-scores (0–100); keys present only for channels that had inputs |
+| `score` | int | Composite quality **0–100** (`jump_scoring.compute_jump_score`) |
+| `score_breakdown` | object | Active channels only: each value is **0–100**, **one decimal**. Includes **`_error`** only in the degenerate case above |
 
 ---
 
@@ -171,69 +180,78 @@ Each completed `JUMP` includes a composite **score** (0–100, percentage-style)
 }
 ```
 
-> **Calibration note:** `takeoff.pos`, `takeoff.approach_velocity_cms`, `takeoff.stance_width_cm`, `metrics.drift_cm`, `metrics.com_flight_drift_cm`, and `landing_pos` are only present when `--calibrate` is used. All other fields are always computed.
+> **Calibration note:** Without `--calibrate`, **`takeoff.pos`** is JSON **`null`** (the key is still present); **`takeoff.approach_velocity_cms`** and **`takeoff.stance_width_cm`** keys are **omitted** (no cm geometry); **`metrics.drift_cm`**, **`metrics.com_flight_drift_cm`**, and **`landing_pos`** are omitted. Pose-based fields (including **`takeoff.crouch_*`** and most **`metrics`**) still populate when tracking succeeds.
 
-> **`trunk_lean_deg` note:** Currently always `null` — `hip_x` is not yet threaded through the tracker→analyzer data flow.
+> **`trunk_lean_deg` note:** Always **`null`** in output — `JumpAnalyzer` assigns `None` at jump completion; a `_compute_trunk_lean` helper exists but shoulder/hip wiring is not hooked up yet.
 
 #### Top-level JUMP fields
 
 | Field | Type | Description |
 |---|---|---|
+| `event` | string | Always `"JUMP"` |
 | `jump_num` | int | Sequential jump counter for this player in the video |
 | `player_id` | int | ByteTrack ID of the tracked player |
-| `start_video_time_sec` | float | Video timestamp at takeoff (seconds) |
-| `end_video_time_sec` | float | Video timestamp at landing (seconds) |
-| `status` | string | `"SAFE"`: both knees ≤ 160° at landing. `"STIFF"`: either knee > 160° — straighter legs increase ACL and patellar tendon injury risk |
-| `landing_pos` | [x, y] | Court position (cm) at landing. Only with `--calibrate` |
+| `start_video_time_sec` | float | Video clock time (seconds) at the **jump-start** frame: first frame where the hip crosses the takeoff detector (`hip_y` below 93% of the standing baseline). Rounded to 3 decimal places |
+| `end_video_time_sec` | float | Video clock time (seconds) at the **landing** frame: first frame after takeoff where the hip returns within the landing band (`hip_y` at or above 97% of the standing baseline). Rounded to 3 decimal places |
+| `status` | string | `"SAFE"`: both knees ≤ **160°** at the landing frame (default threshold; configurable via `JumpAnalyzer(..., stiff_landing_threshold=...)`). `"STIFF"`: either knee **strictly greater than** that threshold — straighter legs increase ACL and patellar tendon injury risk |
+| `landing_pos` | [x, y] | Player ground position in court coordinates (cm) at the landing frame (`court_pos` from the tracker’s feet/ground point after `CameraCalibrator.transform_point`). Only with `--calibrate` |
 
 #### `takeoff` fields
 
 | Field | Type | Description |
 |---|---|---|
-| `pos` | [x, y] | Court position (cm) at takeoff. Only with `--calibrate` |
-| `approach_velocity_cms` | float | 2D court-plane speed (cm/s) via OLS regression over the 0.5 s window before takeoff. Elite attackers typically reach 400–600 cm/s. Only with `--calibrate` |
-| `stance_width_cm` | float | Distance between left and right ankles at takeoff (cm). Only with `--calibrate` |
-| `crouch_depth_deg` | float | Minimum average knee angle in the 1 s before takeoff. Lower = deeper pre-jump squat |
-| `crouch_duration_sec` | float | Time (seconds) both knees spent below 150° during the approach crouch |
-| `trunk_lean_deg` | float \| null | Angle of hip→shoulder line from vertical at takeoff. 0° = perfectly upright. Currently always `null` |
+| `pos` | [x, y] \| null | Ground position transformed to court coordinates (cm) at **jump-start** (`jump_start_pos`). **`null`** without calibration |
+| `approach_velocity_cms` | float | 2D court-plane speed (cm/s) via OLS over the **`approach_window_sec`** interval (default **0.5 s**) ending at jump-start — see **Key metric formulas**. Key **omitted** without calibration-derived position history |
+| `stance_width_cm` | float | Euclidean distance between left and right ankles in cm at jump-start (**`foot_court_pos`**). Key **omitted** without ankle positions in cm |
+| `crouch_depth_deg` | float | Minimum, over grounded samples with `t ≤` jump-start time, of the **average** `(left_knee_angle + right_knee_angle) / 2`. Samples come from the rolling **1 s** approach buffer (`approach_knee_angles`). Lower = deeper squat. Present only together with **`crouch_duration_sec`** — both keys **omitted** if no approach knee samples buffered through takeoff |
+| `crouch_duration_sec` | float | Among the same buffered samples with `t ≤` jump-start: **elapsed time between the first and last timestamp** whose average knee angle is **strictly less than** **150°** (`JumpAnalyzer._CROUCH_THRESHOLD_DEG`). **0** if average never drops below **150°** **or** only **one** such sample exists |
+| `trunk_lean_deg` | float \| null | Planned: angle of hip→shoulder line from vertical at takeoff (0° = upright). Stubbed **`null`** until torso position is plumbed through (see calibration note above) |
 
 #### `metrics` fields — Injury Prevention
 
 | Field | Type | Description |
 |---|---|---|
-| `knee_angles.left` | float | Left knee angle at landing (degrees). 180° = fully straight |
-| `knee_angles.right` | float | Right knee angle at landing (degrees). 180° = fully straight |
-| `knee_symmetry_deg` | float | Absolute difference between left and right knee angles at landing. Larger values indicate asymmetric loading |
+| `knee_angles.left` | float | Left knee **hip–knee–ankle** angle (degrees) from pose (`tracker.py`, world landmarks). Straighter legs approach **180°**; smaller values mean deeper flexion. Taken from the **landing-detection frame** — the first airborne frame where `hip_y` reaches the landing band (`≥ 97%` of standing baseline), same instant as **`end_video_time_sec`**. Rounded to **1** decimal |
+| `knee_angles.right` | float | Same as left, for the right leg |
+| `knee_symmetry_deg` | float | Absolute difference **between left and right** knee angles at that same landing frame (degrees). **0** = symmetric; larger values indicate asymmetric loading. Rounded to **1** decimal. Always present with numeric angles for a completed `JUMP` (no JSON `null`) |
 
 #### `metrics` fields — Jump Performance
 
 | Field | Type | Description |
 |---|---|---|
-| `air_time_sec` | float | Time from takeoff to landing (seconds) |
-| `jump_height_est_cm` | float | Estimated vertical hip displacement (cm), derived from the ratio of hip pixel travel to baseline hip height |
-| `jump_height_est_inch` | float | Same as above, in inches |
-| `takeoff_angle_deg` | float \| null | Jump trajectory angle from horizontal (degrees). Computed as `atan2(v₀_vertical, approach_velocity)`. `null` when approach velocity is unavailable (i.e., without `--calibrate`) |
-| `peak_wrist_height_ratio` | float \| null | Wrist height relative to the shoulder-to-hip body segment at peak jump. > 1.0 means wrists are above the shoulders (full arm extension) |
-| `arm_swing_symmetry_px` | float \| null | Absolute difference between left and right wrist Y positions at takeoff (pixels). 0 = perfectly symmetric arm swing |
+| `air_time_sec` | float | **`end_video_time_sec` − `start_video_time_sec`** for this jump — wall-clock span from jump-start detection to landing detection (same video clock used for timestamps). Rounded to **3** decimals |
+| `jump_height_est_cm` | float | **Model:** `(baseline_hip_y − peak_hip_y) / baseline_hip_y × 100`, where **`peak_hip_y`** is the **minimum** hip pixel Y reached while airborne (lowest row in the image = highest point in space). Treats that fraction as vertical hip displacement in **cm** under an implicit ~**100 cm** hip-height scale — see **Key metric formulas**. Rounded to **1** decimal |
+| `jump_height_est_inch` | float | **`jump_height_est_cm × 0.393701`**, rounded to **1** decimal |
+| `takeoff_angle_deg` | float \| null | Degrees above horizontal from **`atan2(v₀_vertical, approach_velocity_cms)`** with **`v₀_vertical = √(2 × 981 × jump_height_est_cm)`** — see **Key metric formulas**. Rounded to **1** decimal. **`null`** if approach velocity is missing or **`≤ 0`**, or **`jump_height_est_cm` ≤ 0** (usual without **`--calibrate`**) |
+| `peak_wrist_height_ratio` | float \| null | At **peak hip** (minimum `hip_y` while airborne): **`(hip_y_peak − avg_wrist_y) / (hip_y_peak − avg_shoulder_y)`** using **`upper_body_at_peak`** from the tracker (`shoulders_px` / `wrists_px` in **full-frame pixels**; image Y increases downward). **> 1** when wrists are **above** shoulders in the frame. Rounded to **3** decimals. **`null`** if pose did not supply upper body at peak, or shoulder–hip segment length **`≤ 0`** |
+| `arm_swing_symmetry_px` | float \| null | **`|left_wrist_y − right_wrist_y|`** from **`wrists_px`** on the **last** sample in the **1 s** grounded **`approach_upper_body`** buffer — i.e. the **takeoff** frame’s arms when tracking is continuous (pixels). Rounded to **1** decimal. **`null`** if no **`upper_body`** was recorded in that buffer during the approach window |
 
 #### `metrics` fields — Court Position & Drift (requires `--calibrate`)
 
+Court positions are **`CameraCalibrator.transform_point`** outputs in cm on the canonical top-down court (**`x`** ≈ 9 m span **0–900**, **`y`** ≈ 18 m span **0–1800** — see **`camera_calib.py`**). **`takeoff`** uses **`jump_start_pos`**; landing uses **`court_pos`** on the landing frame (`ground_pos` transformed).
+
 | Field | Type | Description |
 |---|---|---|
-| `drift_cm.forward_back` | float | How far the player landed in front of (positive) or behind (negative) their takeoff point (cm) |
-| `drift_cm.side_to_side` | float | Lateral displacement from takeoff to landing (cm). Large values may indicate balance issues |
-| `drift_cm.magnitude` | float | Straight-line distance from takeoff to landing: `sqrt(forward_back² + side_to_side²)` (cm) |
-| `com_flight_drift_cm` | float | Maximum perpendicular deviation of the hip (CoM proxy) from the straight takeoff-to-landing line (cm). Lower = more controlled flight |
+| `drift_cm.forward_back` | float | **`landing_y − takeoff_y`** (cm). **Positive** when the landing **`y`** is greater than at takeoff in this coordinate frame (interpret as “forward” along the court **`y`** axis after your corner calibration). Rounded to **1** decimal |
+| `drift_cm.side_to_side` | float | **`landing_x − takeoff_x`** (cm). Lateral shift along **`x`**. Rounded to **1** decimal |
+| `drift_cm.magnitude` | float | **`√(side_to_side² + forward_back²)`** — planar distance from takeoff to landing (cm). Rounded to **1** decimal |
+| `com_flight_drift_cm` | float | Maximum **perpendicular** distance (cm) from any **hip path sample** during flight to the **infinite line** through takeoff and landing court positions — same geometry as **Key metric formulas** (`cross` / chord length). Hip positions are appended each airborne frame when **`court_pos`** exists (**≥ 2** samples required, including straight-line degeneracy handling). Rounded to **1** decimal |
+
+The entire **`drift_cm`** object is **omitted** if **`court_pos`** or **`jump_start_pos`** is missing at landing. **`com_flight_drift_cm`** is **omitted** if fewer than **two** hip samples were collected in flight **or** takeoff/landing court positions are missing.
 
 #### `metrics` fields — Post-Landing Absorption
 
-These fields are computed from a 300 ms window after landing and are initially `null`, then filled in by the time the next jump starts.
+While grounded **after** landing (and **not** airborne on a later jump), the analyzer collects knee samples into **`post_landing_knee`** until **`post_landing_window`** (**300 ms**) elapses (`JumpAnalyzer.post_landing_window`). The buffer is **seeded with the landing frame**. Finalization runs when that timer fires **or** early when **takeoff for the next jump** begins (same `_finalize_landing_absorption` path).
+
+They are **`null` on the `JUMP` row until finalized**. If processing **stops** before **300 ms** of post-landing frames arrives **and** no further jump occurs, metrics **stay `null`** — **`save_logs` does not synthesize frames**.
 
 | Field | Type | Description |
 |---|---|---|
-| `min_landing_knee_angle_deg` | float \| null | Minimum average knee angle in the 300 ms after landing. Lower = deeper absorption squat |
-| `landing_absorption_duration_sec` | float \| null | Time from landing frame to the frame of deepest knee flexion (seconds) |
-| `landing_knee_flexion_rate_degs` | float \| null | Rate of knee bend after landing (°/s). Higher = faster shock absorption |
+| `min_landing_knee_angle_deg` | float \| null | Minimum over the window of **`(left_knee_angle + right_knee_angle) / 2`** (same knee convention as landing). Lower = deeper flexion during absorption. **`null`** until finalized |
+| `landing_absorption_duration_sec` | float \| null | **`t_min − t_landing`** where **`t_min`** is the timestamp of the **first** sample (chronological order) achieving **`min_landing_knee_angle_deg`**. **`0`** if the deepest flex is on the landing frame itself. **`null`** until finalized |
+| `landing_knee_flexion_rate_degs` | float \| null | **`(avg_at_landing − min_avg) / landing_absorption_duration_sec`** when duration **`> 0`** — average rate (°/s) from landing-frame average knee angle to deepest flex in the window; **`0`** when duration is **`0`**. **`null`** until finalized |
+
+**Rounding:** **`min`** and **`flexion_rate`** to **1** decimal; **`duration`** to **3** decimals (`analyzer.py`).
 
 ---
 
@@ -316,7 +334,7 @@ The analyzer operates in three states per jump cycle:
 
 **1. Grounded (waiting for takeoff)**
 - Jump detected when `hip_y < baseline_hip_height × 0.93` (hip rises more than 7% above its standing baseline).
-- At the moment of takeoff, the analyzer captures: jump start time and court position, approach velocity (OLS regression over a 0.5 s sliding window — see formula below), stance width, crouch depth/duration from a 1 s approach buffer, trunk lean, and arm swing symmetry.
+- At the moment of takeoff, the analyzer captures: jump start time and court position (when calibrated), approach velocity (OLS regression over a 0.5 s sliding window — see formula below), stance width (when ankle positions are available in cm), crouch depth/duration from a 1 s approach buffer, arm swing symmetry from the last upper-body sample in that buffer, and **`trunk_lean_deg` is filled as `null`** (stub until wired).
 - While grounded, a slow EMA adapts the baseline: `baseline = 0.98 × baseline + 0.02 × hip_y`. The guard `|hip_y − baseline| / baseline < 0.15` ensures crouches and jumps don't corrupt the baseline estimate.
 
 **2. Airborne (tracking peak)**
@@ -327,7 +345,7 @@ The analyzer operates in three states per jump cycle:
 - Landing detected when `hip_y ≥ baseline_hip_height × 0.97`.
 - Computes: air time, jump height, knee angles at landing, all drift metrics, takeoff angle, CoM flight drift, and peak wrist height ratio.
 - Appends a `JUMP` entry to the history log.
-- Starts a 300 ms **post-landing absorption window**: collects knee angles until it expires, then amends the most recent `JUMP` entry with `min_landing_knee_angle_deg`, `landing_absorption_duration_sec`, and `landing_knee_flexion_rate_degs`.
+- Starts a **300 ms** **post-landing absorption window** (grounded samples only); when the window ends **or** the athlete’s **next takeoff** begins early, **`_finalize_landing_absorption`** patches the latest `JUMP.metrics` with the absorption trio. Frames must actually be processed — **writing JSON without ~300 ms of subsequent frames leaves these fields `null`**.
 
 ---
 
@@ -375,17 +393,55 @@ jump_height_cm = (pixel_jump / baseline_hip_y) × 100
 ```
 Interprets the hip's fractional rise relative to its standing position as a percentage of an assumed ~100 cm hip height. Most accurate when court calibration is active (pixel scale is known).
 
+**Air time (s)**
+```
+air_time_sec = landing_frame_time − jump_start_frame_time
+```
+Uses the same frame timestamps as **`start_video_time_sec`** / **`end_video_time_sec`** — i.e. **not** physics-derived from hang time, but the detector’s takeoff-to-landing interval.
+
+**Upper body (pixels, from `tracker.py` landmarks mapped to full frame)**
+
+```
+avg_shoulder_y = (left_shoulder.y + right_shoulder.y) / 2
+avg_wrist_y    = (left_wrist.y + right_wrist.y) / 2
+segment        = hip_y_peak − avg_shoulder_y        # must be > 0
+peak_wrist_height_ratio = (hip_y_peak − avg_wrist_y) / segment
+```
+`hip_y_peak` is the minimum hip row during the jump (same as **`peak_hip_y`** in `JumpAnalyzer`). **`arm_swing_symmetry_px`** uses the same landmark **Y** coordinates: **`|left_wrist_y − right_wrist_y|`** from the last grounded **`approach_upper_body`** sample (takeoff frame when pose is present).
+
 **Takeoff angle (degrees)**
 ```
 v0_vertical = sqrt(2 × 981 cm/s² × jump_height_cm)
-takeoff_angle = atan2(v0_vertical, approach_velocity_cms)
+takeoff_angle_deg = atan2(v0_vertical, approach_velocity_cms)   # converted to degrees in code
 ```
-Estimates how much of the athlete's total takeoff velocity was directed vertically vs. horizontally. `null` without calibration.
+Uses **`jump_height_est_cm`** from the pixel-height model above and **`takeoff.approach_velocity_cms`** from OLS — same inputs as emitted in JSON. **`null`** if **`approach_velocity_cms`** is absent or **`≤ 0`** or **`jump_height_cm ≤ 0`**. Missing approach velocity is the usual case **without `--calibrate`**.
+
+**Planar drift (`drift_cm`, cm)**
+
+Computed at landing from takeoff vs landing **`court_pos`**:
+```
+side_to_side   = landing_x − takeoff_x    # JSON key drift_cm.side_to_side
+forward_back   = landing_y − takeoff_y    # JSON key drift_cm.forward_back
+magnitude      = sqrt(side_to_side² + forward_back²)
+```
 
 **CoM flight drift (cm)**
-Maximum perpendicular distance from any hip position during flight to the straight line between takeoff and landing positions. Computed via the point-to-line formula:
+
+Maximum perpendicular distance from any hip **`court_pos`** sample during flight to the **line** through takeoff and landing (infinite line, same as classic point-to-line distance):
 ```
-distance = |cross_product(landing − takeoff, takeoff − point)| / |landing − takeoff|
+distance = |(ey − sy)·px − (ex − sx)·py + ex·sy − ey·sx| / √((ex − sx)² + (ey − sy)²)
+```
+If takeoff and landing coincide (**0** chord length), the implementation falls back to the **maximum distance** from takeoff to any hip sample (see `_compute_com_flight_drift`).
+
+**Post-landing absorption (after the 300 ms window is finalized)**
+
+Over grounded samples `(t, left, right)` collected starting at **`t_landing`**:
+
+```
+avg(t)           = (left + right) / 2
+min_avg          = minimum of avg(t) over the buffer
+duration         = t_* − t_landing   where t_* is timestamp of first sample attaining min_avg
+flexion_rate     = (avg(t_landing) − min_avg) / duration    if duration > 0 else 0
 ```
 
 ---
@@ -427,6 +483,7 @@ python -m pytest tests/test_analyzer.py -v
 1. Add frames to `tests/fixtures/single_jump_sequence.json` if the new metric requires different input.
 2. Compute the expected value by hand or from a trusted run, then add it to `tests/fixtures/expected_output.json`.
 3. Add an assertion to `TestE2EMetricRegression` in `tests/test_e2e.py`.
+4. For nullable metrics, include a fixture or unit test that asserts JSON `null` (or omitted key) when the “no data” branch is exercised — see `CLAUDE.md` (**Nullable metric verification**). Extend `tests/test_analyzer.py` **`TestNullableMetricSemantics`** when the contract changes.
 
 ---
 
@@ -452,7 +509,9 @@ Slow tests (`@pytest.mark.slow`) require a real video file and GPU — run them 
 1. Add a regression test to `TestE2EMetricRegression` in `tests/test_e2e.py` and update `tests/fixtures/expected_output.json` with the pre-computed expected value.
 2. Implement the metric in `analyzer.py`.
 3. Document the new field in `README.md` under the relevant `metrics` table, including units and value range.
-4. Verify consistency: run the tool twice on the same video and confirm the output is identical:
+4. **Nullable fields:** document every `null when …` rule and verify the saved JSON uses real JSON `null` (or omits the key, if that is the contract — see `CLAUDE.md` → **Nullable metric verification**). Add a test or fixture branch that exercises the absent-data case when feasible.
+5. Update **`docs/metric-audit-matrix.md`** so the audit matrix stays aligned with **README + code** (same metric contract you just documented above).
+6. Verify consistency: run the tool twice on the same video and confirm the output is identical:
    ```bash
    python main.py --video single_jump.mov --player_id 1 --output output/run1.json
    python main.py --video single_jump.mov --player_id 1 --output output/run2.json
