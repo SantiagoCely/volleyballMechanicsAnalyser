@@ -513,6 +513,7 @@ Three jobs run on every pull request, push to `main`, and merge-queue event.
 | Job | Blocks merge? | What it checks |
 |---|---|---|
 | **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow and not fuzz"` — deterministic unit/e2e tests; excludes GPU video **and** Hypothesis fuzz (`pytest-timeout` used in some modules; add `and not stress` when that marker exists) |
+| **Property / fuzz tests** | No | Same CI job runs `pytest tests/test_fuzz_properties.py -m fuzz` **after** the fast suite with **`continue-on-error: true`** — failures are visible in logs but do **not** block merge until promoted — [issue #35](https://github.com/SantiagoCely/volleyballMechanicsAnalyser/issues/35) |
 | **Lint (syntax errors)** | Yes | `flake8 --select=E9,F63,F7,F82` — runtime errors and undefined names only |
 | **Lint (style)** | No | Full `flake8` style check — informational, never blocks |
 | **Type-check** | No | `mypy` run with `|| true` — always passes, findings visible in CI logs only |

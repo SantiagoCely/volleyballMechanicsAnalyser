@@ -49,6 +49,12 @@ jobs:
       - name: Run fast test suite
         run: python -m pytest tests/ -v -m "not slow and not fuzz" --tb=short
 
+      # Hypothesis — same install, does not block merge. When stable, remove
+      # continue-on-error and make this the primary gate (see #35).
+      - name: Property / fuzz tests (non-blocking)
+        continue-on-error: true
+        run: python -m pytest tests/test_fuzz_properties.py -v -m fuzz --tb=short
+
   # ── Job 2: Linting ────────────────────────────────────────────────────────
   # Two-pass flake8:
   #   Pass 1 (hard gate)  — syntax errors and undefined names only.
