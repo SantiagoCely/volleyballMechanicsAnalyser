@@ -9,7 +9,7 @@ This document maps the issue’s taxonomy and acceptance criteria to concrete ta
 ## Goals (from issue)
 
 1. Close selected gaps versus the taxonomy table: **fuzz**, **invariance/determinism**, **`main.py` / CLI sanity**, **formal analyzer state transitions**, optional **performance/stress**.
-2. For each in-scope item: tests use **pytest markers**, **timeouts** where loops could hang, and fit the existing fast suite (`-m "not slow"`) unless explicitly tagged otherwise.
+2. For each in-scope item: tests use **pytest markers**, **timeouts** where loops could hang, and fit the blocking CI suite (`-m "not slow and not fuzz and not stress"`) unless explicitly tagged otherwise.
 3. **`README.md` → Testing** (and **CI docs**): short pointer if new test categories/markers are introduced.
 4. **Continuous integration**: any change to marker semantics must update **`.github/workflows/ci.yml`** so the blocking job still runs the intended subset.
 
@@ -55,7 +55,7 @@ Legend from issue: **Strong** / **Partial** / **Gap**. The table below ties each
 - [x] **Decide scope** — Confirm phase 1 vs 2 vs deferred rows; record in PR description (“Scope decisions”).
 - [x] **Per in-scope gap** — Tests use **markers** and **timeouts** where loops or Hypothesis could run long.
 - [x] **`pytest.ini`** — Register every marker you use (`slow` exists; add `fuzz`, `stress` only when needed).
-- [x] **`.github/workflows/ci.yml`** — Blocking step `Run fast test suite` must stay aligned with markers (today: `python -m pytest tests/ -v -m "not slow" --tb=short`). If fuzz/stress land, update to e.g. `-m "not slow and not fuzz and not stress"` or equivalent **and** mirror the same expression in **`README.md` → CI Pipeline** so docs do not drift.
+- [x] **`.github/workflows/ci.yml`** — Blocking step `Run fast test suite` stays aligned with markers (`python -m pytest tests/ -v -m "not slow and not fuzz and not stress" --tb=short`) **and** mirrors **`README.md` → CI Pipeline**.
 - [x] **`README.md` → Testing** — Bullet or table row for new markers/categories / optional jobs.
 - [x] **`CLAUDE.md`** — Optional one-line pointer if automated determinism replaces **only-manual** consistency check for some workflows.
 
@@ -67,7 +67,7 @@ Legend from issue: **Strong** / **Partial** / **Gap**. The table below ties each
 
 Today only `slow` is registered. Add **only markers you actually use**:
 
-| Marker | Meaning | Default CI (`-m "not slow"`) |
+| Marker | Meaning | Default CI (`-m "not slow and not fuzz and not stress"`) |
 |--------|---------|-------------------------------|
 | `slow` | YOLO / real video | Excluded |
 | `fuzz` | Hypothesis / randomised inputs | Excluded |
@@ -163,13 +163,13 @@ Use **`@pytest.mark.fuzz`**, cap **`max_examples`**, **`deadline`** or **`pytest
 3. **State machine suite** — Named scenarios + docstrings.
 4. **Determinism** — Double-run JSON / `save_logs` equality (fast).
 5. **README (+ optional CLAUDE)** — Document markers and optional suites.
-6. ~~**Phase 2**~~ — Hypothesis **`@pytest.mark.fuzz`** suite (`tests/test_fuzz_properties.py`); CI/readme `-m "not slow and not fuzz"`. *(Optional subprocess integration / slow video `diff` — still deferred.)*
+6. ~~**Phase 2**~~ — Hypothesis **`@pytest.mark.fuzz`** suite (`tests/test_fuzz_properties.py`); CI `-m "not slow and not fuzz and not stress"`. **Optional follow-ups** (subprocess `main`, stress, slow `diff`, renormalization) — see **`docs/issue-33-optional-followups-plan.md`**.
 
 ---
 
 ## Verification before closing the issue
 
-- `python -m pytest tests/ -v -m "not slow and not fuzz"` passes (or the **exact** expression documented in **README + ci.yml** after marker changes).
+- `python -m pytest tests/ -v -m "not slow and not fuzz and not stress"` passes (or the **exact** expression documented in **README + ci.yml** after marker changes).
 - New tests are **deterministic** and **bounded** (timeouts or finite examples).
 - **`README.md`** Testing (and **CI Pipeline**) updated when markers or jobs change.
 - Optional: manual **`diff`** consistency check from **`CLAUDE.md`** when changing pipeline determinism.

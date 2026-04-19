@@ -10,13 +10,13 @@ See `README.md` — [Quick Start](#quick-start) and [CLI Flags](#cli-flags).
 
 ```bash
 # Fast tests (no GPU, ~2–4 s) — run after every change
-python -m pytest tests/ -v -m "not slow and not fuzz"
+python -m pytest tests/ -v -m "not slow and not fuzz and not stress"
 
-# Full suite including tracker smoke test (~15 s); still excludes fuzz
-python -m pytest tests/ -v -m "not fuzz"
+# Full suite including tracker smoke test (~15 s); still excludes fuzz + stress
+python -m pytest tests/ -v -m "not fuzz and not stress"
 
 # Single file
-python -m pytest tests/test_e2e.py -v -m "not slow and not fuzz"
+python -m pytest tests/test_e2e.py -v -m "not slow and not fuzz and not stress"
 python -m pytest tests/test_analyzer.py -v
 ```
 

@@ -451,17 +451,20 @@ flexion_rate     = (avg(t_landing) − min_avg) / duration    if duration > 0 el
 ### Running tests
 
 ```bash
-# Fast tests (no GPU, ~2–4 s) — run after every change — excludes slow + fuzz markers
-python -m pytest tests/ -v -m "not slow and not fuzz"
+# Fast tests (no GPU, ~2–6 s) — PR gate — excludes slow + fuzz + stress
+python -m pytest tests/ -v -m "not slow and not fuzz and not stress"
 
-# Full suite including tracker smoke tests (~15 s, requires YOLO model load); still excludes fuzz
-python -m pytest tests/ -v -m "not fuzz"
+# Full suite including tracker smoke (~15 s, YOLO); still excludes fuzz + stress
+python -m pytest tests/ -v -m "not fuzz and not stress"
+
+# Stress (long synthetic loops)
+python -m pytest tests/ -v -m stress
 
 # Property/fuzz tests (Hypothesis — optional, slower / randomized)
 python -m pytest tests/ -v -m fuzz
 
 # Single file (fast layers only)
-python -m pytest tests/test_e2e.py -v -m "not slow and not fuzz"
+python -m pytest tests/test_e2e.py -v -m "not slow and not fuzz and not stress"
 python -m pytest tests/test_analyzer.py -v
 ```
 
@@ -473,6 +476,9 @@ python -m pytest tests/test_analyzer.py -v
 | `tests/test_analyzer_state_machine.py` | Synthetic frame sequences asserting jump / post-landing state transitions (`is_jumping`, `post_landing_active`, history) |
 | `tests/test_determinism.py` | Same inputs produce identical saved JSON (`save_logs`) and identical `compute_jump_score` outputs |
 | `tests/test_fuzz_properties.py` | **`@pytest.mark.fuzz`** — Hypothesis properties for `compute_jump_score` and `analyze_frame` short sequences |
+| `tests/test_optional_integration.py` | Subprocess run of **`main.main()`** with **`tests/run_main_mocked_subprocess.py`** (mocked `PlayerTracker`, synthetic `.avi`) |
+| `tests/test_stress_analyzer.py` | **`@pytest.mark.stress`** — long grounded `analyze_frame` streams (no YOLO) |
+| `tests/test_slow_video_determinism.py` | **`@pytest.mark.slow`** — optional full-pipeline `main.py` twice on `single_jump.mov` → identical JSON (skips if clip absent) |
 | `tests/test_main_cli.py` | `parse_main_args` / default `--output` path / nested output dir creation / `main.py --help` (no model load) |
 | `tests/test_tracker.py` | Smoke tests for `PlayerTracker` — initialisation and `process_frame` return shape |
 | `tests/test_utils.py` | Unit tests for geometry helpers (`calculate_angle`, `calculate_distance`, etc.) |
@@ -483,19 +489,22 @@ python -m pytest tests/test_analyzer.py -v
 
 | Marker | Meaning |
 |--------|---------|
-| *(default)* | Fast blocking suite: `-m "not slow and not fuzz"` |
+| *(default)* | Fast blocking suite: `-m "not slow and not fuzz and not stress"` |
 | `slow` | YOLO load and/or committed golden video regressions — excluded from PR CI |
 | `fuzz` | Hypothesis property tests (`tests/test_fuzz_properties.py`) — excluded from PR CI |
+| `stress` | Long synthetic loops (`tests/test_stress_analyzer.py`) — excluded from PR CI |
 
 Some tests use **`pytest-timeout`** (`@pytest.mark.timeout`) so bounded loops stay bounded. Install with `pip install pytest pytest-timeout` (included when installing from `requirements.txt`). **`hypothesis`** powers `@pytest.mark.fuzz` tests (also listed in `requirements.txt`).
 
-If you add optional markers such as **`stress`** (long-run suites), register them in `pytest.ini` and extend the blocking CI expression — for example `-m "not slow and not fuzz and not stress"` — because pytest does not auto-exclude unknown markers.
+Optional follow-ups (subprocess integration, stress, slow determinism) are summarized in **`docs/issue-33-optional-followups-plan.md`**.
+
+If you add more optional markers, register them in `pytest.ini` and extend the blocking CI `-m` expression — pytest does not auto-exclude unknown markers.
 
 ### End-to-end test layers (`test_e2e.py`)
 
 - **Layer 1 — Metric regression tests (`TestE2EMetricRegression`):** Feed the deterministic 11-frame fixture (`tests/fixtures/single_jump_sequence.json`) through `JumpAnalyzer` and assert every metric value against `tests/fixtures/expected_output.json`. Catches silent regressions in metric formulas without running a real video.
 - **Layer 2 — Tracker smoke tests (`@pytest.mark.slow`):** Verify `PlayerTracker` initialises and `process_frame` returns a 6-tuple without crashing. Requires the YOLO model to load — excluded from fast CI.
-- **Layer 3 — Pipeline integration tests:** Mock the tracker, generate a synthetic video in memory, run the full `main.py` processing loop, and assert on the saved JSON structure and values.
+- **Layer 3 — Pipeline integration tests:** Mock the tracker, generate a synthetic video on disk, run the **same processing loop** as `main.py` (in-process), and assert on the saved JSON. **Additional optional coverage:** subprocess `main.main()` with `tests/run_main_mocked_subprocess.py` — see `tests/test_optional_integration.py` and **`docs/issue-33-optional-followups-plan.md`**.
 
 ### Adding tests for new metrics
 
@@ -512,13 +521,13 @@ Three jobs run on every pull request, push to `main`, and merge-queue event.
 
 | Job | Blocks merge? | What it checks |
 |---|---|---|
-| **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow and not fuzz"` — deterministic unit/e2e tests; excludes GPU video **and** Hypothesis fuzz (`pytest-timeout` used in some modules; add `and not stress` when that marker exists) |
+| **Tests (fast suite)** | Yes | `pytest tests/ -m "not slow and not fuzz and not stress"` — deterministic unit/e2e + subprocess mock integration; excludes GPU video, fuzz, and stress (`pytest-timeout` on long-running tests) |
 | **Property / fuzz tests** | No | Same CI job runs `pytest tests/test_fuzz_properties.py -m fuzz` **after** the fast suite with **`continue-on-error: true`** — failures are visible in logs but do **not** block merge until promoted — [issue #35](https://github.com/SantiagoCely/volleyballMechanicsAnalyser/issues/35) |
 | **Lint (syntax errors)** | Yes | `flake8 --select=E9,F63,F7,F82` — runtime errors and undefined names only |
 | **Lint (style)** | No | Full `flake8` style check — informational, never blocks |
 | **Type-check** | No | `mypy` run with `|| true` — always passes, findings visible in CI logs only |
 
-Slow tests (`@pytest.mark.slow`) require a real video file and GPU — run them locally before opening a PR.
+Slow tests (`@pytest.mark.slow`) need local assets (e.g. golden videos, optional `single_jump.mov`) and often GPU — run them locally before opening a PR.
 
 ---
 

@@ -207,3 +207,20 @@ class TestSessionJumpScoreStatsRollups:
         ]
         out = session_jump_score_stats(history)
         assert out["avg_jump_score"] == 50.0
+
+
+class TestRenormalizationStability:
+    """Issue #33 optional: scoring unchanged when inactive metric keys differ."""
+
+    def test_extra_non_scoring_metric_keys_same_result(self):
+        core = {
+            "knee_angles": {"left": 140.0, "right": 138.0},
+            "jump_height_est_cm": 35.0,
+        }
+        takeoff = {}
+        minimal = compute_jump_score(dict(core), takeoff)
+        extra = compute_jump_score(
+            {**core, "air_time_sec": 0.42, "landing_knee_flexion_rate_degs": None},
+            takeoff,
+        )
+        assert minimal == extra
