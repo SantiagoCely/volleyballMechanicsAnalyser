@@ -27,8 +27,8 @@ Four layers of coverage:
 Running all layers:
     python -m pytest tests/test_e2e.py -v
 
-Skipping slow tests:
-    python -m pytest tests/test_e2e.py -v -m "not slow"
+Skipping slow, fuzz, and stress tests:
+    python -m pytest tests/test_e2e.py -v -m "not slow and not fuzz and not stress"
 """
 
 import json

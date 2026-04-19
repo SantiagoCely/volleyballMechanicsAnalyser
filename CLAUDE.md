@@ -2,6 +2,10 @@
 
 > For full project documentation (architecture, output schema, metrics reference, CLI flags) see `README.md`. Jump composite scoring and session rollups are under **Output Format → Jump scoring** and **SESSION_SUMMARY** in `README.md`.
 
+## Planning docs (agents)
+
+Implementation plans and issue/task breakdown files exist only to steer work — **do not commit them** to this repository (no new plan `.md` files under `docs/` or elsewhere from agent work unless the maintainer explicitly asks that a specific document be persisted). Prefer keeping plans in chat or local-only notes.
+
 ## Running the analyser
 
 See `README.md` — [Quick Start](#quick-start) and [CLI Flags](#cli-flags).
@@ -9,14 +13,14 @@ See `README.md` — [Quick Start](#quick-start) and [CLI Flags](#cli-flags).
 ## Running tests
 
 ```bash
-# Fast tests (no GPU, ~2 s) — run after every change
-python -m pytest tests/ -v -m "not slow"
+# Fast tests (no GPU, ~2–4 s) — run after every change
+python -m pytest tests/ -v -m "not slow and not fuzz and not stress"
 
-# Full suite including tracker smoke test (~15 s)
-python -m pytest tests/ -v
+# Full suite including tracker smoke test (~15 s); still excludes fuzz + stress
+python -m pytest tests/ -v -m "not fuzz and not stress"
 
 # Single file
-python -m pytest tests/test_e2e.py -v -m "not slow"
+python -m pytest tests/test_e2e.py -v -m "not slow and not fuzz and not stress"
 python -m pytest tests/test_analyzer.py -v
 ```
 
@@ -82,6 +86,8 @@ diff output/run1.json output/run2.json
 ```
 
 `diff` must produce no output.
+
+Fast in-process coverage of the same idea (fixture sequence, no video): `tests/test_determinism.py` (`TestSaveLogsDeterminism`).
 
 **Example clip:** `single_jump.mov` is intentionally **not in git** (see `.gitignore` — `*.mov`). Keep a short test clip at the **repo root** locally; fresh clones skip this step until a file is added.
 

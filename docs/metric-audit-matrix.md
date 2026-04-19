@@ -97,7 +97,7 @@
 
 ## Follow-up tracking
 
-- **Negative / edge tests:** Closed against **`docs/negative-test-scenarios-plan-issue-31.md`** (**#31**); includes `jump_scoring` degenerate path, `JumpAnalyzer` synthetic sequences, mocked pipeline, and JSON contract checks (`pytest tests/ -m "not slow"`).
+- **Negative / edge tests:** Closed against **`docs/negative-test-scenarios-plan-issue-31.md`** (**#31**); includes `jump_scoring` degenerate path, `JumpAnalyzer` synthetic sequences, mocked pipeline, and JSON contract checks (`pytest tests/ -m "not slow and not fuzz and not stress"`).
 - **Local-only media:** `*.mov` / `*.mp4` are **gitignored**; place **`single_jump.mov`** at repo root for the **CLAUDE.md** determinism check (not available on a fresh clone).
 
 ---
