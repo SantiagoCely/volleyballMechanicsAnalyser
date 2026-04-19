@@ -22,6 +22,7 @@
 | **Drift / `com_flight_drift_cm`** | **Pass** | Axis mapping Δx/Δy → JSON keys; omission without calibration path. |
 | **Post-landing absorption** | **Pass (limited)** | Filled after 300 ms of grounded frames or next jump; stays `null` if processing stops early. |
 | **Composite `score` / `score_breakdown`** | **Pass** | Weights renormalize; degenerate path `score` 0 + `_error` (see **#31**). |
+| **Negative tests** | **Pass** | **Negative tests:** scenario matrix and harness layers in **`docs/negative-test-scenarios-plan-issue-31.md`** (GitHub **#31**). Implementation: `tests/test_jump_scoring_negative.py`, `tests/test_analyzer_negative.py`, `tests/test_json_contract_metrics.py`, plus Layer 3 pipeline cases in `tests/test_e2e.py`. |
 
 ---
 
@@ -96,7 +97,7 @@
 
 ## Follow-up tracking
 
-- **Negative / edge tests:** **#31** (includes `jump_scoring` degenerate API path).
+- **Negative / edge tests:** Closed against **`docs/negative-test-scenarios-plan-issue-31.md`** (**#31**); includes `jump_scoring` degenerate path, `JumpAnalyzer` synthetic sequences, mocked pipeline, and JSON contract checks (`pytest tests/ -m "not slow"`).
 - **Local-only media:** `*.mov` / `*.mp4` are **gitignored**; place **`single_jump.mov`** at repo root for the **CLAUDE.md** determinism check (not available on a fresh clone).
 
 ---

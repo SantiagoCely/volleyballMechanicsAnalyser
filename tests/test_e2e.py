@@ -485,6 +485,106 @@ class TestPipelineIntegration(unittest.TestCase):
                 cap.release()
                 self.assertEqual(errors, [], "Pipeline raised errors on wrong tuple length")
 
+    def test_pipeline_wrong_tuple_length_writes_valid_summary_without_jumps(self):
+        """Phase 4 — non-6-tuples skipped end-to-end; JSON still valid, no partial writes."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            video_path = os.path.join(tmp_dir, "test.avi")
+            output_path = os.path.join(tmp_dir, "output", "results.json")
+            _make_synthetic_video(video_path, n_frames=11)
+
+            from tracker import PlayerTracker
+
+            with patch.object(
+                PlayerTracker, "process_frame", return_value=(None, None, None, None)
+            ):
+                tracker = PlayerTracker.__new__(PlayerTracker)
+                analyzer = JumpAnalyzer()
+                cap = cv2.VideoCapture(video_path)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    result = tracker.process_frame(frame)
+                    if result is None or len(result) != 6:
+                        continue
+                    pid, knees, hip_y, gpos, feet, ub = result
+                    if pid is None:
+                        continue
+                    analyzer.analyze_frame(pid, knees, hip_y, gpos, frame_time=0.0, foot_court_pos=feet, upper_body=ub)
+                cap.release()
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                analyzer.save_logs(output_path, video_name="bad_tuple.avi")
+
+            with open(output_path) as f:
+                data = json.load(f)
+            self.assertEqual(data[0]["event"], "SESSION_SUMMARY")
+            self.assertEqual(data[0]["jump_count"], 0)
+            self.assertIsNone(data[0]["avg_jump_score"])
+            self.assertEqual([e["event"] for e in data].count("JUMP"), 0)
+
+    def test_pipeline_track_id_none_never_analyzes_zero_jumps(self):
+        """§4.9 — track_id None: no analyze_frame path, SESSION_SUMMARY has jump_count 0."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            video_path = os.path.join(tmp_dir, "test.avi")
+            output_path = os.path.join(tmp_dir, "output", "results.json")
+            _make_synthetic_video(video_path, n_frames=11)
+
+            from tracker import PlayerTracker
+
+            none_track = (None, None, None, None, None, None)
+            with patch.object(
+                PlayerTracker, "process_frame", side_effect=[none_track] * 15
+            ):
+                tracker = PlayerTracker.__new__(PlayerTracker)
+                analyzer = JumpAnalyzer()
+                cap = cv2.VideoCapture(video_path)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+                    frame_time = frame_idx / fps if fps > 0 else 0
+                    result = tracker.process_frame(frame)
+                    if result is None or len(result) != 6:
+                        continue
+                    player_id, knee_angles, hip_y, ground_pos, foot_pixels, upper_body = result
+                    if player_id is None:
+                        continue
+                    analyzer.analyze_frame(
+                        player_id,
+                        knee_angles,
+                        hip_y,
+                        ground_pos,
+                        frame_time,
+                        foot_court_pos=foot_pixels,
+                        upper_body=upper_body,
+                    )
+                cap.release()
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                analyzer.save_logs(output_path, video_name="no_id.avi")
+
+                self.assertEqual(analyzer.jump_count, 0)
+            with open(output_path) as f:
+                data = json.load(f)
+            self.assertEqual(data[0]["jump_count"], 0)
+            self.assertEqual(len(data), 1)
+
+    def test_pipeline_upper_body_none_throughout_nulls_pose_metrics(self):
+        """§4.9 — Layer C with upper_body always None (_build_mock_side_effect); pose metrics null."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            video_path = os.path.join(tmp_dir, "test.avi")
+            output_path = os.path.join(tmp_dir, "output", "results.json")
+            _make_synthetic_video(video_path)
+            self._run_pipeline_loop(video_path, output_path)
+
+            with open(output_path) as f:
+                data = json.load(f)
+            jump = next(e for e in data if e["event"] == "JUMP")
+            self.assertIsNone(jump["metrics"]["peak_wrist_height_ratio"])
+            self.assertIsNone(jump["metrics"]["arm_swing_symmetry_px"])
+
     def test_no_calibrator_does_not_raise(self):
         """Running without a calibrator should not raise any exceptions."""
         with tempfile.TemporaryDirectory() as tmp_dir:
